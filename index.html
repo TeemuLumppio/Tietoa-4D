@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.3</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.4</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -170,22 +170,45 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <button id="btnUndo" class="ghost">↶ Kumoa</button>
     <button id="btnSelMissing" class="ghost">Valitse aikataulutta olevat</button>
   </div>
-  <div class="muted">Vain muuttamasi kentät (oranssi reunus) tallentuvat. Käsin annettu arvo ohittaa säännön ja säilyy, vaikka aikataulu päivittyy.</div>
+  <div class="muted">Vain muuttamasi kentät (oranssi reunus) tallentuvat. Käsin annettu arvo ohittaa säännön ja Status Sharingin, ja säilyy, vaikka aikataulu päivittyy.</div>
 </section>
 
 <section>
-  <h2>4. Vienti ja tallennus</h2>
+  <h2>4. Toteuma Status Sharingista</h2>
+  <div class="muted">Asentajien Status Sharing -kirjaukset (myös mobiili) tuodaan toteumaksi.</div>
+  <label>Alue
+    <select id="ssRegion">
+      <option value="europe">Eurooppa</option>
+      <option value="northamerica">Pohjois-Amerikka</option>
+      <option value="unitedkingdom">Iso-Britannia</option>
+      <option value="asia">Aasia</option>
+      <option value="australia">Australia</option>
+    </select>
+  </label>
+  <div class="row"><button id="btnSSConnect">Yhdistä</button></div>
+  <label>Action <select id="ssAction"><option value="">– yhdistä ensin –</option></select></label>
+  <label>Työn alla = <select id="ssStartVal"></select></label>
+  <label>Valmis = <select id="ssDoneVal"></select></label>
+  <div class="row">
+    <button id="btnSSFetch">Hae toteuma</button>
+    <button id="btnSSClear" class="ghost">Poista haettu toteuma</button>
+  </div>
+  <label class="chk"><input type="checkbox" id="ssAuto"> Hae automaattisesti 5 min välein</label>
+  <div id="ssInfo" class="info">Ei yhdistetty.</div>
+</section>
+
+<section>
+  <h2>5. Vienti ja tallennus</h2>
   <div class="row">
     <button id="btnExport">Aikataulu CSV</button>
     <button id="btnElemTpl" class="ghost">Elementtipohja (vaihe 2)</button>
     <button id="btnSaveWork" class="ghost">Tallenna työtiedosto</button>
   </div>
-  <div class="row"><button id="btnSS" class="ghost">Kokeellinen: toteuma Status Sharingista</button></div>
   <textarea id="out" rows="4" placeholder="Vienti näkyy myös tässä (kopioi Exceliin)"></textarea>
 </section>
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
