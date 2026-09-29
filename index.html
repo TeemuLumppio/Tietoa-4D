@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tietoa 4D</title>
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<style>
+:root{--b:#0063a3;--bg:#f6f7f9;--t:#1d2733;--m:#6b7785}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.4 "Segoe UI",Roboto,Arial,sans-serif;color:var(--t);background:var(--bg)}
+header{background:var(--b);color:#fff;padding:10px 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pill{font-size:11px;font-weight:400;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+section{background:#fff;margin:8px;padding:10px;border-radius:6px;border:1px solid #e3e6ea}
+h2{font-size:13px;margin:0 0 8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;align-items:center}
+button{background:var(--b);color:#fff;border:0;border-radius:4px;padding:6px 10px;cursor:pointer;font:inherit}
+button.ghost{background:#e8eef4;color:var(--b)}
+button:disabled{opacity:.5;cursor:default}
+select,input[type=date],input[type=file]{font:inherit;padding:4px;border:1px solid #cfd5dc;border-radius:4px;max-width:100%}
+label{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0}
+label.chk{display:inline-flex;justify-content:flex-start}
+.muted{color:var(--m);font-size:12px}
+.date{font-size:16px;font-weight:600;text-align:center;margin:8px 0 2px}
+input[type=range]{width:100%}
+#legend div{display:flex;align-items:center;gap:6px;margin:2px 0}
+.sw{width:12px;height:12px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.15)}
+textarea{width:100%;font:11px Consolas,monospace}
+details{margin:8px}
+pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea;padding:6px;max-height:180px;overflow:auto}
+</style>
+</head>
+<body>
+<header>Tietoa 4D <span id="conn" class="pill">Yhdistetään…</span></header>
+
+<section>
+  <h2>1. Aikataulu</h2>
+  <input type="file" id="file" accept=".csv,.txt">
+  <div class="row">
+    <button id="btnResolve">Kohdista malliin</button>
+    <button id="btnClear" class="ghost">Tyhjennä aikataulu</button>
+  </div>
+  <div id="dataInfo" class="muted">Ei aikataulua ladattuna.</div>
+</section>
+
+<section>
+  <h2>2. Suunnittele mallissa</h2>
+  <div class="muted">Valitse objektit mallista ja anna päivämäärät (tulevatkin käyvät).</div>
+  <label>Suunniteltu alku <input type="date" id="pStart"></label>
+  <label>Suunniteltu loppu <input type="date" id="pEnd"></label>
+  <label>Toteutunut <input type="date" id="pActual"></label>
+  <div class="row">
+    <button id="btnAssign">Aseta valituille</button>
+    <button id="btnUnassign" class="ghost">Poista valituilta</button>
+  </div>
+</section>
+
+<section>
+  <h2>3. Toisto</h2>
+  <div class="row">
+    <select id="mode">
+      <option value="plan">Rakentuminen (suunniteltu)</option>
+      <option value="compare">Suunniteltu vs. toteutunut</option>
+    </select>
+  </div>
+  <div class="row">
+    <select id="others">
+      <option value="hide">Muut objektit: piilota</option>
+      <option value="ghost">Muut objektit: haalea</option>
+      <option value="normal">Muut objektit: normaali</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="natural" checked> Valmis omalla värillä</label>
+  </div>
+  <div id="dateLabel" class="date">–</div>
+  <input type="range" id="slider" min="0" max="0" value="0">
+  <div class="row">
+    <button id="btnPrev" title="Taaksepäin">◀</button>
+    <button id="btnPlay">▶ Toista</button>
+    <button id="btnNext" title="Eteenpäin">▶</button>
+    <select id="stepSel"><option value="1">1 pv</option><option value="7" selected>1 vk</option></select>
+    <select id="speed"><option value="800">Hidas</option><option value="350" selected>Normaali</option><option value="120">Nopea</option></select>
+  </div>
+  <div class="row">
+    <button id="btnToday" class="ghost">Tänään</button>
+    <button id="btnReset" class="ghost">Palauta malli</button>
+  </div>
+  <div id="legend"></div>
+</section>
+
+<section>
+  <h2>4. Vienti</h2>
+  <div class="row">
+    <button id="btnExport">Vie aikataulu CSV:ksi</button>
+    <button id="btnTemplate" class="ghost">CSV-pohja valituista</button>
+  </div>
+  <textarea id="out" rows="5" placeholder="CSV ilmestyy myös tähän (kopioi Exceliin)"></textarea>
+</section>
+
+<details><summary>Loki</summary><pre id="log"></pre></details>
+
+<script src="app.js"></script>
+</body>
+</html>
