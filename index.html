@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.1</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.2</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -104,15 +104,15 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <label><input type="radio" name="vm" value="input" checked> Syöttö</label>
     <label><input type="radio" name="vm" value="play"> Toisto (aikajana)</label>
   </div>
-  <label>Ilman aikataulua
-    <select id="unsched">
-      <option value="grey">Harmaa</option>
-      <option value="magenta">Korosta (magenta)</option>
-      <option value="ghost">Haalea</option>
-      <option value="hide">Piilota</option>
-    </select>
-  </label>
   <div id="inputPanel">
+    <label>Ilman aikataulua
+      <select id="unsched">
+        <option value="grey">Harmaa</option>
+        <option value="magenta">Korosta (magenta)</option>
+        <option value="ghost">Haalea</option>
+        <option value="hide">Piilota</option>
+      </select>
+    </label>
     <label>Väritys
       <select id="colorBy">
         <option value="date">Suunniteltu alku (liukuväri)</option>
@@ -129,15 +129,31 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
         <option value="compare">Suunniteltu vs. toteutunut</option>
       </select>
     </label>
-    <label class="chk"><input type="checkbox" id="natural" checked> Valmis omalla värillä</label>
+    <label>Ilman aikataulua
+      <select id="unschedPlay">
+        <option value="hide" selected>Piilota (alkaa tyhjästä)</option>
+        <option value="ghost">Haalea</option>
+        <option value="grey">Harmaa</option>
+      </select>
+    </label>
+    <label>Valmis
+      <select id="doneColor">
+        <option value="green" selected>Vihreä</option>
+        <option value="natural">Mallin oma väri</option>
+      </select>
+    </label>
     <div id="dateLabel" class="date">–</div>
     <input type="range" id="slider" min="0" max="0" value="0">
     <div class="row">
       <button id="btnPrev" title="Taaksepäin">◀</button>
       <button id="btnPlay">▶ Toista</button>
       <button id="btnNext" title="Eteenpäin">▶</button>
-      <select id="stepSel"><option value="1">1 pv</option><option value="7" selected>1 vk</option></select>
-      <select id="speed"><option value="800">Hidas</option><option value="350" selected>Normaali</option><option value="120">Nopea</option></select>
+      <select id="stepSel">
+        <option value="event" selected>Seuraava muutos</option>
+        <option value="1">1 pv</option>
+        <option value="7">1 vk</option>
+      </select>
+      <select id="speed"><option value="1200">Hidas</option><option value="600" selected>Normaali</option><option value="200">Nopea</option></select>
       <button id="btnToday" class="ghost">Tänään</button>
     </div>
   </div>
@@ -176,6 +192,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

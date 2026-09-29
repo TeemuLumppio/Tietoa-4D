@@ -1,7 +1,8 @@
 "use strict";
-/* Tietoa 4D v2.1 – Trimble Connect 3D Viewer -laajennus
-   v2.1: väritys kohdistetaan myös elementin alaosiin (kokoonpanon osat), koska
-   Trimble periyttää näkyvyyden mutta ei väriä alaobjekteille. Valinta osasta -> elementti. */
+/* Tietoa 4D v2.2 – Trimble Connect 3D Viewer -laajennus
+   v2.2: toistolla oma "ilman aikataulua" -asetus (oletus piilota = alkaa tyhjästä),
+   valmis-väri valittavissa (oletus vihreä), askel "seuraava muutos",
+   tehtävä on työn alla loppupäivään asti ja valmis seuraavana päivänä. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
@@ -232,9 +233,9 @@ const DEFAULT_PROPS = { lohko: "Elementin lohko", kerros: "Elementin kerros", ni
 function freshState() { return { v: 2, tasks: [], key: {}, keyAuto: {}, manual: {}, elem: {}, props: Object.assign({}, DEFAULT_PROPS) }; }
 let S = freshState();
 let API = null, projectKey = "tc4d2_default";
-const objs = new Map();          // "modelId|rid" -> elementti
-const kids = new Map();          // elementin k -> [alaosien rid]
-const kidToParent = new Map();   // "modelId|rid" (alaosa) -> elementin k
+const objs = new Map();
+const kids = new Map();
+const kidToParent = new Map();
 let taskById = new Map(), tasksByLohko = new Map(), orderDay = new Map();
 const nameCounts = new Map();
 let selected = [];
@@ -357,7 +358,7 @@ async function readModel() {
   refreshSelection();
 }
 
-/* ---- Elementtien alaosat (kokoonpanon osat saavat värin vain suoraan) ---- */
+/* ---- Elementtien alaosat ---- */
 function collectIds(node, out) {
   if (node == null) return;
   if (Array.isArray(node)) { node.forEach(n => collectIds(n, out)); return; }
@@ -420,7 +421,7 @@ async function readHierarchy() {
     }
   };
   await Promise.all(Array.from({ length: 16 }, worker));
-  log("Rakenne luettu: " + kids.size + " elementillä yhteensä " + nk + " alaosaa (tyyppi " + String(type) + "). Väritys kohdistetaan myös niihin.");
+  log("Rakenne luettu: " + kids.size + " elementillä yhteensä " + nk + " alaosaa. Väritys kohdistetaan myös niihin.");
 }
 
 async function resolveOrphans() {
@@ -645,15 +646,16 @@ function hsv(h, s, v) {
   return { r: f(5), g: f(3), b: f(1), a: 255 };
 }
 function gradColor(i) { return hsv(240 * (1 - i / (GRAD_STEPS - 1)), 0.85, 0.92); }
+function unschedValue() { return viewMode() === "play" ? $("unschedPlay").value : $("unsched").value; }
 function unschedStyle() {
-  const v = $("unsched").value;
+  const v = unschedValue();
   if (v === "magenta") return { visible: true, color: C.magenta };
   if (v === "ghost") return { visible: true, color: C.ghost };
   if (v === "hide") return { visible: false };
   return { visible: true, color: C.grey };
 }
 function unschedCss() {
-  const v = $("unsched").value;
+  const v = unschedValue();
   return v === "magenta" ? rgbCss(C.magenta) : v === "ghost" ? "rgba(200,200,200,.35)" : v === "hide" ? "transparent" : rgbCss(C.grey);
 }
 async function setAll(style) {
@@ -676,7 +678,10 @@ async function applyGroups(groups) {
   }
 }
 function sw(col, label, n) { return '<div><span class="sw" style="background:' + rgbCss(col) + '"></span>' + label + ": <b>" + (n || 0) + "</b></div>"; }
-function noneRow(n) { return '<div><span class="sw" style="background:' + unschedCss() + '"></span>Ei aikataulua: <b>' + (n || 0) + "</b></div>"; }
+function noneRow(n) {
+  const hidden = unschedValue() === "hide";
+  return '<div><span class="sw" style="background:' + unschedCss() + '"></span>Ei aikataulua' + (hidden ? " (piilossa)" : "") + ": <b>" + (n || 0) + "</b></div>";
+}
 
 async function renderInput() {
   lastState.clear();
@@ -740,12 +745,18 @@ async function renderInput() {
 
 /* ---- Toisto ---- */
 const lastState = new Map();
-let minDay = null, maxDay = null, cur = null, playing = false;
+let minDay = null, maxDay = null, cur = null, playing = false, events = [];
 function recomputeRange() {
   let lo = Infinity, hi = -Infinity;
-  for (const o of objs.values()) for (const d of [o.start, o.end, o.actual]) if (d != null) { if (d < lo) lo = d; if (d > hi) hi = d; }
+  const ev = new Set();
+  for (const o of objs.values()) {
+    if (o.start != null) { ev.add(o.start); const pe = o.end != null ? o.end : o.start; ev.add(pe + 1); }
+    if (o.actual != null) ev.add(o.actual);
+    for (const d of [o.start, o.end, o.actual]) if (d != null) { if (d < lo) lo = d; if (d > hi) hi = d; }
+  }
+  events = [...ev].sort((a, b) => a - b);
   if (lo === Infinity) { minDay = maxDay = cur = null; $("slider").max = 0; updateLabel(); return; }
-  minDay = lo - 7; maxDay = hi + 7;
+  minDay = lo - 1; maxDay = hi + 1;
   if (cur == null || cur < minDay || cur > maxDay) cur = minDay;
   $("slider").max = maxDay - minDay;
   $("slider").value = cur - minDay;
@@ -758,6 +769,29 @@ function setDay(d) {
   updateLabel();
 }
 function updateLabel() { $("dateLabel").textContent = cur == null ? "–" : WD[wday(cur)] + " " + fmt(cur) + "  ·  vk " + isoWeek(cur); }
+function stepForward() {
+  if (cur == null) return false;
+  const v = $("stepSel").value;
+  let next;
+  if (v === "event") { next = events.find(d => d > cur); if (next == null) return false; }
+  else { if (cur >= maxDay) return false; next = cur + (+v); }
+  setDay(next);
+  return true;
+}
+function stepBack() {
+  if (cur == null) return false;
+  const v = $("stepSel").value;
+  let prev;
+  if (v === "event") {
+    for (let i = events.length - 1; i >= 0; i--) if (events[i] < cur) { prev = events[i]; break; }
+    if (prev == null) prev = minDay;
+  } else prev = cur - (+v);
+  if (prev >= cur) return false;
+  setDay(prev);
+  return true;
+}
+/* Suunniteltu: piilossa ennen alkua, työn alla alku–loppu (loppupäivä mukaan lukien), valmis loppua seuraavana päivänä.
+   Vertailu: valmis toteutuneesta päivästä alkaen, myöhässä jos loppu ohitettu ilman toteumaa. */
 function stateOf(o, d, mode) {
   const ps = o.start, pe = o.end != null ? o.end : o.start;
   if (mode === "compare") {
@@ -769,14 +803,15 @@ function stateOf(o, d, mode) {
   }
   if (ps == null) return o.actual != null ? (d >= o.actual ? "done" : "hidden") : "none";
   if (d < ps) return "hidden";
-  if (d < pe) return "wip";
+  if (d <= pe) return "wip";
   return "done";
 }
+function doneStyle() { return $("doneColor").value === "natural" ? { visible: true, color: "reset" } : { visible: true, color: C.done }; }
 function playStyle(s) {
   if (s === "hidden") return { visible: false };
   if (s === "wip") return { visible: true, color: C.wip };
   if (s === "late") return { visible: true, color: C.late };
-  return ($("playMode").value === "plan" && $("natural").checked) ? { visible: true, color: "reset" } : { visible: true, color: C.done };
+  return doneStyle();
 }
 async function renderPlay(force) {
   if (cur == null) recomputeRange();
@@ -801,17 +836,18 @@ async function renderPlay(force) {
   }
   await applyGroups(groups);
   let h = '<div><span class="sw" style="background:#fff"></span>Tulossa (piilossa): <b>' + cnt.hidden + "</b></div>" + sw(C.wip, "Työn alla", cnt.wip);
-  h += (mode === "plan" && $("natural").checked) ? '<div><span class="sw" style="background:#ddd"></span>Valmis (oma väri): <b>' + cnt.done + "</b></div>" : sw(C.done, "Valmis", cnt.done);
+  h += $("doneColor").value === "natural" ? '<div><span class="sw" style="background:#ddd"></span>Valmis (mallin väri): <b>' + cnt.done + "</b></div>" : sw(C.done, "Valmis", cnt.done);
   if (mode === "compare") h += sw(C.late, "Myöhässä", cnt.late);
   $("legend").innerHTML = h + noneRow(cnt.none);
 }
 async function play() {
   if (minDay == null) return;
-  if (cur >= maxDay) setDay(minDay);
+  const atEnd = $("stepSel").value === "event" ? events.every(d => d <= cur) : cur >= maxDay;
+  if (atEnd) { setDay(minDay); await render(false); await sleep(+$("speed").value); }
   playing = true;
   $("btnPlay").textContent = "⏸ Tauko";
-  while (playing && cur < maxDay && viewMode() === "play") {
-    setDay(cur + (+$("stepSel").value));
+  while (playing && viewMode() === "play") {
+    if (!stepForward()) break;
     await render(false);
     await sleep(+$("speed").value);
   }
@@ -842,7 +878,7 @@ async function render(force) {
   }
 }
 
-/* ---- Diagnostiikka: väritetäänkö valittu objekti ---- */
+/* ---- Diagnostiikka ---- */
 async function testColor() {
   if (!API) return;
   let sel = [];
@@ -856,7 +892,7 @@ async function testColor() {
   log("Testi: valittu rid " + rid + " = " + kind + (o ? " (" + (o.nimi || "–") + ", alaosia " + ((kids.get(o.k) || []).length) + ")" : "") + ".");
   try {
     await API.viewer.setObjectState({ modelObjectIds: [{ modelId: m.modelId, objectRuntimeIds: [rid] }] }, { visible: true, color: C.magenta });
-    log("Testi: valittu objekti väritettiin magentaksi. Kerro, muuttuiko väri mallissa.");
+    log("Testi: valittu objekti väritettiin magentaksi.");
   } catch (e) { log("Testi epäonnistui: " + errMsg(e)); }
 }
 
@@ -1251,15 +1287,17 @@ document.querySelectorAll('input[name="vm"]').forEach(r => r.addEventListener("c
   $("inputPanel").hidden = p;
   playing = false;
   recomputeRange();
+  if (p) setDay(minDay);
   render(true);
 }));
 $("unsched").onchange = () => render(true);
+$("unschedPlay").onchange = () => render(true);
 $("colorBy").onchange = () => render(true);
 $("playMode").onchange = () => render(true);
-$("natural").onchange = () => render(true);
+$("doneColor").onchange = () => render(true);
 $("slider").addEventListener("input", () => { if (minDay != null) { setDay(minDay + (+$("slider").value)); render(false); } });
-$("btnPrev").onclick = () => { if (cur != null) { setDay(cur - (+$("stepSel").value)); render(false); } };
-$("btnNext").onclick = () => { if (cur != null) { setDay(cur + (+$("stepSel").value)); render(false); } };
+$("btnPrev").onclick = () => { if (stepBack()) render(false); };
+$("btnNext").onclick = () => { if (stepForward()) render(false); };
 $("btnPlay").onclick = () => { if (playing) playing = false; else play(); };
 $("btnToday").onclick = () => { setDay(todayDn()); render(false); };
 ["eTask", "eStart", "eEnd", "eActual"].forEach(id => {
