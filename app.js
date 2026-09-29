@@ -1,10 +1,7 @@
 "use strict";
-/* Tietoa 4D v2 – Trimble Connect 3D Viewer -laajennus
-   Syöttötila: malli värittyy aikataulun mukaan (liukuväri), aikataulutta olevat harmaana.
-   Toistotila: rakennus rakentuu aikajanalla / suunniteltu vs. toteutunut.
-   Kohdistus: Tocoman-tehtävä (lohko + kerros + rakennusosa) -> mallin ominaisuudet.
-   Etusija: käsin annettu > elementtilista (vaihe 2) > Tocoman-sääntö (vaihe 1).
-   Data pysyy selaimessa (localStorage) ja työtiedostossa (.json). */
+/* Tietoa 4D v2.1 – Trimble Connect 3D Viewer -laajennus
+   v2.1: väritys kohdistetaan myös elementin alaosiin (kokoonpanon osat), koska
+   Trimble periyttää näkyvyyden mutta ei väriä alaobjekteille. Valinta osasta -> elementti. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
@@ -235,7 +232,9 @@ const DEFAULT_PROPS = { lohko: "Elementin lohko", kerros: "Elementin kerros", ni
 function freshState() { return { v: 2, tasks: [], key: {}, keyAuto: {}, manual: {}, elem: {}, props: Object.assign({}, DEFAULT_PROPS) }; }
 let S = freshState();
 let API = null, projectKey = "tc4d2_default";
-const objs = new Map();          // "modelId|rid" -> objekti
+const objs = new Map();          // "modelId|rid" -> elementti
+const kids = new Map();          // elementin k -> [alaosien rid]
+const kidToParent = new Map();   // "modelId|rid" (alaosa) -> elementin k
 let taskById = new Map(), tasksByLohko = new Map(), orderDay = new Map();
 const nameCounts = new Map();
 let selected = [];
@@ -249,6 +248,7 @@ function log(msg) {
 }
 function busy(msg) { $("busy").textContent = msg || ""; }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+function errMsg(e) { return e && e.message ? e.message : String(e); }
 
 let saveTimer = null;
 function save() {
@@ -312,9 +312,9 @@ function makeObj(modelId, rid, hex, fields) {
 async function readModel() {
   if (!API) return;
   busy("Luetaan mallia…");
-  objs.clear(); nameCounts.clear();
+  objs.clear(); nameCounts.clear(); kids.clear(); kidToParent.clear();
   let mos = [];
-  try { mos = await API.viewer.getObjects(); } catch (e) { log("getObjects: " + (e && e.message ? e.message : e)); }
+  try { mos = await API.viewer.getObjects(); } catch (e) { log("getObjects: " + errMsg(e)); }
   mos = Array.isArray(mos) ? mos : [];
   let all = 0;
   mos.forEach(m => { all += (m.objects || []).length; });
@@ -325,7 +325,7 @@ async function readModel() {
     for (let i = 0; i < ids.length; i += PCHUNK) {
       const part = ids.slice(i, i + PCHUNK);
       let props = [], ext = [];
-      try { props = (await API.viewer.getObjectProperties(mo.modelId, part)) || []; } catch (e) { log("getObjectProperties: " + (e && e.message ? e.message : e)); }
+      try { props = (await API.viewer.getObjectProperties(mo.modelId, part)) || []; } catch (e) { log("getObjectProperties: " + errMsg(e)); }
       try { ext = (await API.viewer.convertToObjectIds(mo.modelId, part)) || []; } catch (e) { /* GUID ei pakollinen */ }
       const pm = new Map();
       props.forEach(p => { if (p && p.id != null) pm.set(p.id, p); });
@@ -347,6 +347,7 @@ async function readModel() {
   modelRead = true;
   log("Malli luettu: " + all + " objektia, joista " + elems + " elementtitiedoilla, " + nameCounts.size + " eri nimeä.");
   if (!elems) log("Kenttiä \"" + S.props.nimi + "\" / \"" + S.props.lohko + "\" ei löytynyt. Tarkista kenttien nimet kohdasta Asetukset → Näytä valitun ominaisuudet.");
+  await readHierarchy();
   await resolveOrphans();
   busy("");
   autoSuggest();
@@ -354,6 +355,72 @@ async function readModel() {
   renderKeyTable();
   await render(true);
   refreshSelection();
+}
+
+/* ---- Elementtien alaosat (kokoonpanon osat saavat värin vain suoraan) ---- */
+function collectIds(node, out) {
+  if (node == null) return;
+  if (Array.isArray(node)) { node.forEach(n => collectIds(n, out)); return; }
+  if (typeof node === "number") { if (Number.isInteger(node)) out.push(node); return; }
+  if (typeof node === "object") {
+    if (Number.isInteger(node.id)) out.push(node.id);
+    if (Array.isArray(node.children)) collectIds(node.children, out);
+  }
+}
+async function childrenOf(modelId, rid, type) {
+  const res = await API.viewer.getHierarchyChildren(modelId, [rid], type, true);
+  const out = [];
+  collectIds(res, out);
+  return out.filter(x => x !== rid);
+}
+async function readHierarchy() {
+  if (typeof API.viewer.getHierarchyChildren !== "function") {
+    log("Rakennetta ei voi lukea (getHierarchyChildren puuttuu) – väritetään vain elementtitason objektit.");
+    return;
+  }
+  const list = [...objs.values()].filter(o => !o.extra);
+  if (!list.length) return;
+  const TW = (typeof TrimbleConnectWorkspace !== "undefined") ? TrimbleConnectWorkspace : {};
+  const HT = TW.HierarchyType || {};
+  const cands = [];
+  if (HT.ElementAssembly != null) cands.push(HT.ElementAssembly);
+  cands.push(undefined);
+  if (HT.SpatialHierarchy != null) cands.push(HT.SpatialHierarchy);
+  [3, 1].forEach(v => { if (cands.indexOf(v) < 0) cands.push(v); });
+  busy("Luetaan elementtien rakennetta…");
+  const sample = list.slice(0, 40);
+  let type = null, found = false, lastErr = "";
+  for (const c of cands) {
+    let n = 0;
+    for (const o of sample) {
+      try { n += (await childrenOf(o.modelId, o.rid, c)).filter(r => !objs.has(o.modelId + "|" + r)).length; }
+      catch (e) { lastErr = errMsg(e); }
+    }
+    if (n) { type = c; found = true; break; }
+  }
+  if (!found) {
+    log("Elementeillä ei löytynyt alaosia" + (lastErr ? " (virhe: " + lastErr + ")" : "") + " – väritetään objektit sellaisenaan.");
+    return;
+  }
+  let idx = 0, done = 0, nk = 0;
+  const total = list.length;
+  const worker = async () => {
+    while (idx < list.length) {
+      const o = list[idx++];
+      try {
+        const ch = (await childrenOf(o.modelId, o.rid, type)).filter(r => !objs.has(o.modelId + "|" + r));
+        if (ch.length) {
+          kids.set(o.k, ch);
+          ch.forEach(r => kidToParent.set(o.modelId + "|" + r, o.k));
+          nk += ch.length;
+        }
+      } catch (e) { /* ohita */ }
+      done++;
+      if (done % 100 === 0) busy("Luetaan elementtien rakennetta… " + Math.round(done * 100 / total) + " %");
+    }
+  };
+  await Promise.all(Array.from({ length: 16 }, worker));
+  log("Rakenne luettu: " + kids.size + " elementillä yhteensä " + nk + " alaosaa (tyyppi " + String(type) + "). Väritys kohdistetaan myös niihin.");
 }
 
 async function resolveOrphans() {
@@ -558,7 +625,7 @@ async function selectWhere(pred) {
   if (!n) { log("Ei valittavia objekteja."); return; }
   const sel = { modelObjectIds: Object.keys(g).map(modelId => ({ modelId, objectRuntimeIds: g[modelId] })) };
   try { await API.viewer.setSelection(sel, "set"); log("Valittu " + n + " objektia."); }
-  catch (e) { log("setSelection: " + (e && e.message ? e.message : e)); }
+  catch (e) { log("setSelection: " + errMsg(e)); }
   setTimeout(refreshSelection, 300);
 }
 
@@ -592,11 +659,15 @@ function unschedCss() {
 async function setAll(style) {
   try { await API.viewer.setObjectState(undefined, style); }
   catch (e) { await API.viewer.setObjectState({}, style); }
+  await sleep(60);
 }
 function addTo(groups, key, style, o) {
   let g = groups.get(key);
   if (!g) { g = { style, ids: {} }; groups.set(key, g); }
-  (g.ids[o.modelId] || (g.ids[o.modelId] = [])).push(o.rid);
+  const arr = g.ids[o.modelId] || (g.ids[o.modelId] = []);
+  arr.push(o.rid);
+  const ch = kids.get(o.k);
+  if (ch) for (const r of ch) arr.push(r);
 }
 async function applyGroups(groups) {
   for (const g of groups.values()) {
@@ -764,11 +835,29 @@ async function render(force) {
       if (viewMode() === "input") await renderInput();
       else await renderPlay(force);
     }
-  } catch (e) { log("Piirtovirhe: " + (e && e.message ? e.message : e)); }
+  } catch (e) { log("Piirtovirhe: " + errMsg(e)); }
   finally {
     rendering = false;
     if (again) { const f = againForce; again = false; againForce = false; render(f); }
   }
+}
+
+/* ---- Diagnostiikka: väritetäänkö valittu objekti ---- */
+async function testColor() {
+  if (!API) return;
+  let sel = [];
+  try { sel = (await API.viewer.getSelection()) || []; } catch (e) { /* ei valintaa */ }
+  const m = sel.find(x => (x.objectRuntimeIds || []).length);
+  if (!m) { alert("Valitse ensin yksi objekti mallista."); return; }
+  const rid = m.objectRuntimeIds[0];
+  const k = m.modelId + "|" + rid;
+  const kind = objs.has(k) ? "elementti" : (kidToParent.has(k) ? "elementin alaosa" : "tuntematon objekti");
+  const o = objs.get(k) || objs.get(kidToParent.get(k));
+  log("Testi: valittu rid " + rid + " = " + kind + (o ? " (" + (o.nimi || "–") + ", alaosia " + ((kids.get(o.k) || []).length) + ")" : "") + ".");
+  try {
+    await API.viewer.setObjectState({ modelObjectIds: [{ modelId: m.modelId, objectRuntimeIds: [rid] }] }, { visible: true, color: C.magenta });
+    log("Testi: valittu objekti väritettiin magentaksi. Kerro, muuttuiko väri mallissa.");
+  } catch (e) { log("Testi epäonnistui: " + errMsg(e)); }
 }
 
 /* ================= Valinta ja muokkaus ================= */
@@ -776,11 +865,19 @@ async function refreshSelection() {
   if (!API) return;
   let sel = [];
   try { sel = (await API.viewer.getSelection()) || []; } catch (e) { return; }
-  const out = [];
+  const out = [], seen = new Set();
+  const push = o => { if (o && !seen.has(o.k)) { seen.add(o.k); out.push(o); } };
   for (const m of sel) {
     const rids = m.objectRuntimeIds || [];
     const unknown = [];
-    for (const rid of rids) { const o = objs.get(m.modelId + "|" + rid); if (o) out.push(o); else unknown.push(rid); }
+    for (const rid of rids) {
+      const k = m.modelId + "|" + rid;
+      const o = objs.get(k);
+      if (o) { push(o); continue; }
+      const pk = kidToParent.get(k);
+      if (pk && objs.get(pk)) { push(objs.get(pk)); continue; }
+      unknown.push(rid);
+    }
     if (unknown.length && unknown.length <= 5000) {
       let ext = [];
       try { ext = (await API.viewer.convertToObjectIds(m.modelId, unknown)) || []; } catch (e) { /* ei GUIDia */ }
@@ -788,7 +885,7 @@ async function refreshSelection() {
         const o = makeObj(m.modelId, rid, guidToHex(ext[j]), null);
         objs.set(o.k, o);
         computeOne(o);
-        out.push(o);
+        push(o);
       });
     }
   }
@@ -1064,7 +1161,7 @@ async function importSS() {
   }
   if (!confirm("1) Kytke tämän laajennuksen \"Väritä malli\" pois.\n2) Kytke Status Sharingissa \"Väritä tilat mallissa\" päälle.\n3) Paina OK.\nCompleted-tilaiset saavat toteutuneeksi Toteutunut-kentän päivän tai tämän päivän.")) return;
   let res;
-  try { res = await API.viewer.getColoredObjects(); } catch (e) { log("getColoredObjects: " + (e && e.message ? e.message : e)); return; }
+  try { res = await API.viewer.getColoredObjects(); } catch (e) { log("getColoredObjects: " + errMsg(e)); return; }
   log("Kokeellinen: värivastaus (alku): " + JSON.stringify(res).slice(0, 400));
   const day = parseDate($("eActual").value) != null ? parseDate($("eActual").value) : todayDn();
   const counts = {}, before = {};
@@ -1078,7 +1175,8 @@ async function importSS() {
       for (const mo of moi) for (const rid of (mo.objectRuntimeIds || [])) {
         counts[st] = (counts[st] || 0) + 1;
         if (st !== "Completed") continue;
-        const o = objs.get(mo.modelId + "|" + rid);
+        const k = mo.modelId + "|" + rid;
+        const o = objs.get(k) || objs.get(kidToParent.get(k));
         if (!o) continue;
         if (!(o.id in before)) before[o.id] = S.manual[o.id] ? JSON.parse(JSON.stringify(S.manual[o.id])) : null;
         const m = S.manual[o.id] || (S.manual[o.id] = {});
@@ -1103,7 +1201,7 @@ async function showProps() {
   if (!m) { alert("Valitse ensin yksi objekti mallista."); return; }
   let p = [];
   try { p = (await API.viewer.getObjectProperties(m.modelId, [m.objectRuntimeIds[0]])) || []; }
-  catch (e) { log("getObjectProperties: " + (e && e.message ? e.message : e)); return; }
+  catch (e) { log("getObjectProperties: " + errMsg(e)); return; }
   const f = flattenProps(p[0] || {});
   const lines = Object.keys(f).filter(k => k.indexOf(".") < 0 || k === "product.name").sort().map(k => k + " = " + f[k]);
   $("out").value = lines.join("\n");
@@ -1128,7 +1226,7 @@ $("file").addEventListener("change", async ev => {
       }
     } else ok = importRows(parseCSV(await f.text()), f.name);
     if (!ok) { log("Tiedostoa " + f.name + " ei tunnistettu (Tocoman: Nimi+Alku, elementtilista: Tunnus+Järjestys/Alku, tai GUID)."); alert("Tiedoston muotoa ei tunnistettu – katso loki."); }
-  } catch (e) { log("Tuonti epäonnistui: " + (e && e.message ? e.message : e)); alert("Tiedoston luku epäonnistui – katso loki."); }
+  } catch (e) { log("Tuonti epäonnistui: " + errMsg(e)); alert("Tiedoston luku epäonnistui – katso loki."); }
 });
 $("btnRead").onclick = () => readModel();
 $("btnClearAll").onclick = async () => {
@@ -1144,6 +1242,7 @@ $("btnSaveProps").onclick = () => {
   save(); readModel();
 };
 $("btnShowProps").onclick = () => showProps();
+$("btnTestColor").onclick = () => testColor();
 $("covBox").addEventListener("toggle", () => renderCoverage());
 $("colorOn").addEventListener("change", () => { offApplied = false; render(true); });
 document.querySelectorAll('input[name="vm"]').forEach(r => r.addEventListener("change", () => {
@@ -1210,6 +1309,6 @@ let selTimer = null, modelTimer = null;
     else log("Valmis. Lataa Tocoman-aikataulu (xlsx) ja paina \"Lue malli\".");
   } catch (e) {
     $("conn").textContent = "Ei yhteyttä";
-    log("Yhteys Trimble Connectiin epäonnistui: " + (e && e.message ? e.message : e) + " – avaa laajennus Trimble Connectin 3D-katselimessa.");
+    log("Yhteys Trimble Connectiin epäonnistui: " + errMsg(e) + " – avaa laajennus Trimble Connectin 3D-katselimessa.");
   }
 })();

@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.1</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -93,6 +93,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <div class="row">
       <button id="btnSaveProps" class="ghost">Tallenna ja lue malli</button>
       <button id="btnShowProps" class="ghost">Näytä valitun ominaisuudet</button>
+      <button id="btnTestColor" class="ghost">Testaa väritys valitulle</button>
     </div>
   </details>
 </section>
@@ -173,8 +174,8 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
   <textarea id="out" rows="4" placeholder="Vienti näkyy myös tässä (kopioi Exceliin)"></textarea>
 </section>
 
-<details class="logbox"><summary>Loki</summary><pre id="log"></pre></details>
+<details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
