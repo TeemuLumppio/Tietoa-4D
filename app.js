@@ -1,13 +1,13 @@
 "use strict";
-/* Tietoa 4D v2.2 – Trimble Connect 3D Viewer -laajennus
-   v2.2: toistolla oma "ilman aikataulua" -asetus (oletus piilota = alkaa tyhjästä),
-   valmis-väri valittavissa (oletus vihreä), askel "seuraava muutos",
-   tehtävä on työn alla loppupäivään asti ja valmis seuraavana päivänä. */
+/* Tietoa 4D v2.3 – Trimble Connect 3D Viewer -laajennus
+   v2.3: "Piilota" ei enää piilota koko mallia juuritasolla (se esti aikataulutettujen näkymisen),
+   vaan piilottaa aikataulutta olevat objektit yksitellen. Valmis on aina vihreä. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
 const WD = ["su", "ma", "ti", "ke", "to", "pe", "la"];
 const PCHUNK = 400;
+const SCHUNK = 20000;
 
 /* ================= Apufunktiot ================= */
 function guidToHex(g) {
@@ -236,6 +236,9 @@ let API = null, projectKey = "tc4d2_default";
 const objs = new Map();
 const kids = new Map();
 const kidToParent = new Map();
+const allIds = new Map();        // modelId -> kaikki getObjects-idt
+let hierType;                    // löydetty hierarkiatyyppi
+let othersLeaf = null;           // modelId -> muut (ei-elementti) lehtiobjektit piilotusta varten
 let taskById = new Map(), tasksByLohko = new Map(), orderDay = new Map();
 const nameCounts = new Map();
 let selected = [];
@@ -313,7 +316,7 @@ function makeObj(modelId, rid, hex, fields) {
 async function readModel() {
   if (!API) return;
   busy("Luetaan mallia…");
-  objs.clear(); nameCounts.clear(); kids.clear(); kidToParent.clear();
+  objs.clear(); nameCounts.clear(); kids.clear(); kidToParent.clear(); allIds.clear(); othersLeaf = null; hierType = undefined;
   let mos = [];
   try { mos = await API.viewer.getObjects(); } catch (e) { log("getObjects: " + errMsg(e)); }
   mos = Array.isArray(mos) ? mos : [];
@@ -323,6 +326,7 @@ async function readModel() {
   let done = 0, elems = 0;
   for (const mo of mos) {
     const ids = (mo.objects || []).map(x => (typeof x === "number" ? x : (x ? x.id : null))).filter(x => Number.isInteger(x));
+    allIds.set(mo.modelId, (allIds.get(mo.modelId) || []).concat(ids));
     for (let i = 0; i < ids.length; i += PCHUNK) {
       const part = ids.slice(i, i + PCHUNK);
       let props = [], ext = [];
@@ -403,6 +407,7 @@ async function readHierarchy() {
     log("Elementeillä ei löytynyt alaosia" + (lastErr ? " (virhe: " + lastErr + ")" : "") + " – väritetään objektit sellaisenaan.");
     return;
   }
+  hierType = type;
   let idx = 0, done = 0, nk = 0;
   const total = list.length;
   const worker = async () => {
@@ -422,6 +427,37 @@ async function readHierarchy() {
   };
   await Promise.all(Array.from({ length: 16 }, worker));
   log("Rakenne luettu: " + kids.size + " elementillä yhteensä " + nk + " alaosaa. Väritys kohdistetaan myös niihin.");
+}
+
+/* Muut kuin elementit ja niiden alaosat. Kokoavia objekteja (joilla on lapsia) ei piiloteta,
+   koska niiden piilotus piilottaisi myös aikataulutetut elementit. */
+async function ensureOthers() {
+  if (othersLeaf) return othersLeaf;
+  othersLeaf = new Map();
+  const cand = [];
+  for (const [modelId, ids] of allIds) for (const rid of ids) {
+    const k = modelId + "|" + rid;
+    if (!objs.has(k) && !kidToParent.has(k)) cand.push([modelId, rid]);
+  }
+  if (!cand.length) return othersLeaf;
+  const canCheck = typeof API.viewer.getHierarchyChildren === "function" && cand.length <= 30000;
+  let idx = 0, done = 0, containers = 0;
+  busy("Valmistellaan piilotusta…");
+  const worker = async () => {
+    while (idx < cand.length) {
+      const [modelId, rid] = cand[idx++];
+      let leaf = true;
+      if (canCheck) { try { if ((await childrenOf(modelId, rid, hierType)).length) leaf = false; } catch (e) { /* oletetaan lehti */ } }
+      if (leaf) { if (!othersLeaf.has(modelId)) othersLeaf.set(modelId, []); othersLeaf.get(modelId).push(rid); }
+      else containers++;
+      done++;
+      if (done % 200 === 0) busy("Valmistellaan piilotusta… " + Math.round(done * 100 / cand.length) + " %");
+    }
+  };
+  await Promise.all(Array.from({ length: 16 }, worker));
+  busy("");
+  log("Piilotus: " + (cand.length - containers) + " muuta objektia piilotetaan, " + containers + " kokoavaa objektia jätetään näkyviin.");
+  return othersLeaf;
 }
 
 async function resolveOrphans() {
@@ -673,9 +709,26 @@ function addTo(groups, key, style, o) {
 }
 async function applyGroups(groups) {
   for (const g of groups.values()) {
-    const sel = { modelObjectIds: Object.keys(g.ids).map(modelId => ({ modelId, objectRuntimeIds: g.ids[modelId] })) };
-    if (sel.modelObjectIds.length) await API.viewer.setObjectState(sel, g.style);
+    for (const modelId of Object.keys(g.ids)) {
+      const ids = g.ids[modelId];
+      for (let i = 0; i < ids.length; i += SCHUNK) {
+        await API.viewer.setObjectState({ modelObjectIds: [{ modelId, objectRuntimeIds: ids.slice(i, i + SCHUNK) }] }, g.style);
+      }
+    }
   }
+}
+/* Pohjatila: aikataulutta olevat harmaaksi/läpinäkyväksi – tai piilotus yksitellen (ei juuritasolla). */
+async function applyBase() {
+  if (unschedValue() !== "hide") { await setAll(unschedStyle()); return; }
+  await setAll(RESET);
+  const others = await ensureOthers();
+  const st = { visible: false };
+  const groups = new Map();
+  const grp = { style: st, ids: {} };
+  groups.set("h", grp);
+  for (const o of objs.values()) if (o.start == null && o.actual == null) addTo(groups, "h", st, o);
+  for (const [modelId, ids] of others) { const arr = grp.ids[modelId] || (grp.ids[modelId] = []); for (const r of ids) arr.push(r); }
+  await applyGroups(groups);
 }
 function sw(col, label, n) { return '<div><span class="sw" style="background:' + rgbCss(col) + '"></span>' + label + ": <b>" + (n || 0) + "</b></div>"; }
 function noneRow(n) {
@@ -685,7 +738,7 @@ function noneRow(n) {
 
 async function renderInput() {
   lastState.clear();
-  await setAll(unschedStyle());
+  await applyBase();
   const by = $("colorBy").value, today = todayDn();
   const groups = new Map(), cnt = {};
   const inc = k => { cnt[k] = (cnt[k] || 0) + 1; };
@@ -790,8 +843,6 @@ function stepBack() {
   setDay(prev);
   return true;
 }
-/* Suunniteltu: piilossa ennen alkua, työn alla alku–loppu (loppupäivä mukaan lukien), valmis loppua seuraavana päivänä.
-   Vertailu: valmis toteutuneesta päivästä alkaen, myöhässä jos loppu ohitettu ilman toteumaa. */
 function stateOf(o, d, mode) {
   const ps = o.start, pe = o.end != null ? o.end : o.start;
   if (mode === "compare") {
@@ -806,21 +857,20 @@ function stateOf(o, d, mode) {
   if (d <= pe) return "wip";
   return "done";
 }
-function doneStyle() { return $("doneColor").value === "natural" ? { visible: true, color: "reset" } : { visible: true, color: C.done }; }
 function playStyle(s) {
   if (s === "hidden") return { visible: false };
   if (s === "wip") return { visible: true, color: C.wip };
   if (s === "late") return { visible: true, color: C.late };
-  return doneStyle();
+  return { visible: true, color: C.done };
 }
 async function renderPlay(force) {
   if (cur == null) recomputeRange();
   if (cur == null) {
-    await setAll(unschedStyle());
+    await applyBase();
     $("legend").innerHTML = '<div class="muted">Ei päivämääriä toistettavaksi.</div>';
     return;
   }
-  if (force) { lastState.clear(); await setAll(unschedStyle()); }
+  if (force) { lastState.clear(); await applyBase(); }
   const mode = $("playMode").value;
   const groups = new Map(), cnt = { hidden: 0, wip: 0, done: 0, late: 0, none: 0 };
   for (const o of objs.values()) {
@@ -835,8 +885,8 @@ async function renderPlay(force) {
     addTo(groups, s, playStyle(s), o);
   }
   await applyGroups(groups);
-  let h = '<div><span class="sw" style="background:#fff"></span>Tulossa (piilossa): <b>' + cnt.hidden + "</b></div>" + sw(C.wip, "Työn alla", cnt.wip);
-  h += $("doneColor").value === "natural" ? '<div><span class="sw" style="background:#ddd"></span>Valmis (mallin väri): <b>' + cnt.done + "</b></div>" : sw(C.done, "Valmis", cnt.done);
+  let h = '<div><span class="sw" style="background:#fff"></span>Tulossa (piilossa): <b>' + cnt.hidden + "</b></div>" +
+    sw(C.wip, "Työn alla", cnt.wip) + sw(C.done, "Valmis", cnt.done);
   if (mode === "compare") h += sw(C.late, "Myöhässä", cnt.late);
   $("legend").innerHTML = h + noneRow(cnt.none);
 }
@@ -1294,7 +1344,6 @@ $("unsched").onchange = () => render(true);
 $("unschedPlay").onchange = () => render(true);
 $("colorBy").onchange = () => render(true);
 $("playMode").onchange = () => render(true);
-$("doneColor").onchange = () => render(true);
 $("slider").addEventListener("input", () => { if (minDay != null) { setDay(minDay + (+$("slider").value)); render(false); } });
 $("btnPrev").onclick = () => { if (stepBack()) render(false); };
 $("btnNext").onclick = () => { if (stepForward()) render(false); };

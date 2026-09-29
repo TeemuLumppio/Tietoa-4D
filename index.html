@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.2</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.3</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -109,7 +109,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
       <select id="unsched">
         <option value="grey">Harmaa</option>
         <option value="magenta">Korosta (magenta)</option>
-        <option value="ghost">Haalea</option>
+        <option value="ghost">Läpinäkyvä</option>
         <option value="hide">Piilota</option>
       </select>
     </label>
@@ -132,14 +132,8 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <label>Ilman aikataulua
       <select id="unschedPlay">
         <option value="hide" selected>Piilota (alkaa tyhjästä)</option>
-        <option value="ghost">Haalea</option>
+        <option value="ghost">Läpinäkyvä</option>
         <option value="grey">Harmaa</option>
-      </select>
-    </label>
-    <label>Valmis
-      <select id="doneColor">
-        <option value="green" selected>Vihreä</option>
-        <option value="natural">Mallin oma väri</option>
       </select>
     </label>
     <div id="dateLabel" class="date">–</div>
@@ -192,6 +186,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
