@@ -5,99 +5,176 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tietoa 4D</title>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{--b:#0063a3;--bg:#f6f7f9;--t:#1d2733;--m:#6b7785}
 *{box-sizing:border-box}
 body{margin:0;font:13px/1.4 "Segoe UI",Roboto,Arial,sans-serif;color:var(--t);background:var(--bg)}
 header{background:var(--b);color:#fff;padding:10px 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+header small{font-weight:400;opacity:.8}
 .pill{font-size:11px;font-weight:400;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid #e3e6ea}
+.switch{position:relative;display:inline-block;width:38px;height:20px;margin:0}
+.switch input{opacity:0;width:0;height:0}
+.switch .sl{position:absolute;inset:0;background:#c3c9d0;border-radius:20px;transition:.2s;cursor:pointer}
+.switch .sl:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked+.sl{background:var(--b)}
+.switch input:checked+.sl:before{transform:translateX(18px)}
+#busy{margin-left:auto}
 section{background:#fff;margin:8px;padding:10px;border-radius:6px;border:1px solid #e3e6ea}
 h2{font-size:13px;margin:0 0 8px}
+h3{font-size:12px;margin:10px 0 4px}
 .row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0;align-items:center}
 button{background:var(--b);color:#fff;border:0;border-radius:4px;padding:6px 10px;cursor:pointer;font:inherit}
 button.ghost{background:#e8eef4;color:var(--b)}
-button:disabled{opacity:.5;cursor:default}
-select,input[type=date],input[type=file]{font:inherit;padding:4px;border:1px solid #cfd5dc;border-radius:4px;max-width:100%}
+button:disabled{opacity:.45;cursor:default}
+select,input[type=date],input[type=text],input[type=file]{font:inherit;padding:4px;border:1px solid #cfd5dc;border-radius:4px;max-width:100%}
+select{max-width:220px}
 label{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:4px 0}
 label.chk{display:inline-flex;justify-content:flex-start}
+.seg{display:flex;gap:12px;margin-bottom:6px}
+.seg label{display:inline-flex;gap:4px;margin:0;font-weight:600}
 .muted{color:var(--m);font-size:12px}
+.info{font-size:12px;background:#f1f5f9;border-radius:4px;padding:6px;margin-top:6px}
+.dirty{border-color:#ea580c!important;box-shadow:0 0 0 1px #ea580c}
 .date{font-size:16px;font-weight:600;text-align:center;margin:8px 0 2px}
 input[type=range]{width:100%}
+#legend{margin-top:6px}
 #legend div{display:flex;align-items:center;gap:6px;margin:2px 0}
-.sw{width:12px;height:12px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.15)}
+.sw{width:12px;height:12px;border-radius:2px;display:inline-block;border:1px solid rgba(0,0,0,.15);flex:none}
+.grad{height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
+.gradlbl{display:flex!important;justify-content:space-between;font-size:11px;color:var(--m)}
+.tbl{width:100%;border-collapse:collapse;font-size:11px}
+.tbl td,.tbl th{border-bottom:1px solid #eef1f4;padding:3px 2px;text-align:left;vertical-align:top}
+.tbl tr[data-task],.tbl tr[data-nt],.tbl tr[data-nk]{cursor:pointer}
+.tbl tr[data-task]:hover,.tbl tr[data-nt]:hover,.tbl tr[data-nk]:hover{background:#eef6fc}
+.tbl .auto{font-style:italic;color:#475569}
+.tbl tr.ok td:nth-child(2){color:#15803d;font-weight:600}
+.tbl tr.warn{background:#fff4cc}
+.tbl select{max-width:150px;font-size:11px}
+.kv td:first-child{color:var(--m);width:34%}
+details{margin-top:6px}
+details summary{cursor:pointer;font-weight:600;font-size:12px}
+.scroll{max-height:260px;overflow:auto}
 textarea{width:100%;font:11px Consolas,monospace}
-details{margin:8px}
-pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea;padding:6px;max-height:180px;overflow:auto}
+.logbox{margin:8px}
+pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea;padding:6px;max-height:200px;overflow:auto}
 </style>
 </head>
 <body>
-<header>Tietoa 4D <span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<div class="topbar">
+  <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
+  <span>Väritä malli</span><span id="busy" class="muted"></span>
+</div>
 
 <section>
-  <h2>1. Aikataulu</h2>
-  <input type="file" id="file" accept=".csv,.txt">
+  <h2>1. Lähtötiedot</h2>
+  <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt,.json">
+  <div class="muted">Tocoman-aikataulu (xlsx/csv) · elementtilista vaihe 2 (csv/xlsx) · työtiedosto (.json)</div>
   <div class="row">
-    <button id="btnResolve">Kohdista malliin</button>
-    <button id="btnClear" class="ghost">Tyhjennä aikataulu</button>
+    <button id="btnRead">Lue malli</button>
+    <button id="btnClearAll" class="ghost">Tyhjennä työ</button>
   </div>
-  <div id="dataInfo" class="muted">Ei aikataulua ladattuna.</div>
+  <div id="info" class="info">Ei aikataulua.</div>
+  <details id="keyBox"><summary id="keySum">Avainkirja</summary>
+    <div class="muted">Mallin elementtinimi → Tocomanin rakennusosa. Kursivoidut ovat automaattisia ehdotuksia.</div>
+    <div id="keyTable" class="scroll"></div>
+  </details>
+  <details id="covBox"><summary>Kohdistusraportti</summary>
+    <div class="muted">Malli vs. Tocoman (kpl). Klikkaa riviä valitaksesi objektit mallista.</div>
+    <div id="coverage" class="scroll"></div>
+  </details>
+  <details><summary>Asetukset: mallin kentät</summary>
+    <label>Lohko <input type="text" id="pLohko"></label>
+    <label>Kerros <input type="text" id="pKerros"></label>
+    <label>Nimi <input type="text" id="pNimi"></label>
+    <label>Elementtitunnus <input type="text" id="pTunnus"></label>
+    <div class="row">
+      <button id="btnSaveProps" class="ghost">Tallenna ja lue malli</button>
+      <button id="btnShowProps" class="ghost">Näytä valitun ominaisuudet</button>
+    </div>
+  </details>
 </section>
 
 <section>
-  <h2>2. Suunnittele mallissa</h2>
-  <div class="muted">Valitse objektit mallista ja anna päivämäärät (tulevatkin käyvät).</div>
-  <label>Suunniteltu alku <input type="date" id="pStart"></label>
-  <label>Suunniteltu loppu <input type="date" id="pEnd"></label>
-  <label>Toteutunut <input type="date" id="pActual"></label>
-  <div class="row">
-    <button id="btnAssign">Aseta valituille</button>
-    <button id="btnUnassign" class="ghost">Poista valituilta</button>
+  <h2>2. Näkymä</h2>
+  <div class="seg">
+    <label><input type="radio" name="vm" value="input" checked> Syöttö</label>
+    <label><input type="radio" name="vm" value="play"> Toisto (aikajana)</label>
   </div>
-</section>
-
-<section>
-  <h2>3. Toisto</h2>
-  <div class="row">
-    <select id="mode">
-      <option value="plan">Rakentuminen (suunniteltu)</option>
-      <option value="compare">Suunniteltu vs. toteutunut</option>
+  <label>Ilman aikataulua
+    <select id="unsched">
+      <option value="grey">Harmaa</option>
+      <option value="magenta">Korosta (magenta)</option>
+      <option value="ghost">Haalea</option>
+      <option value="hide">Piilota</option>
     </select>
+  </label>
+  <div id="inputPanel">
+    <label>Väritys
+      <select id="colorBy">
+        <option value="date">Suunniteltu alku (liukuväri)</option>
+        <option value="task">Tehtävittäin</option>
+        <option value="source">Tiedon lähde</option>
+        <option value="today">Tilanne tänään (toteuma)</option>
+      </select>
+    </label>
   </div>
-  <div class="row">
-    <select id="others">
-      <option value="hide">Muut objektit: piilota</option>
-      <option value="ghost">Muut objektit: haalea</option>
-      <option value="normal">Muut objektit: normaali</option>
-    </select>
+  <div id="playPanel" hidden>
+    <label>Näytä
+      <select id="playMode">
+        <option value="plan">Rakentuminen (suunniteltu)</option>
+        <option value="compare">Suunniteltu vs. toteutunut</option>
+      </select>
+    </label>
     <label class="chk"><input type="checkbox" id="natural" checked> Valmis omalla värillä</label>
-  </div>
-  <div id="dateLabel" class="date">–</div>
-  <input type="range" id="slider" min="0" max="0" value="0">
-  <div class="row">
-    <button id="btnPrev" title="Taaksepäin">◀</button>
-    <button id="btnPlay">▶ Toista</button>
-    <button id="btnNext" title="Eteenpäin">▶</button>
-    <select id="stepSel"><option value="1">1 pv</option><option value="7" selected>1 vk</option></select>
-    <select id="speed"><option value="800">Hidas</option><option value="350" selected>Normaali</option><option value="120">Nopea</option></select>
-  </div>
-  <div class="row">
-    <button id="btnToday" class="ghost">Tänään</button>
-    <button id="btnReset" class="ghost">Palauta malli</button>
+    <div id="dateLabel" class="date">–</div>
+    <input type="range" id="slider" min="0" max="0" value="0">
+    <div class="row">
+      <button id="btnPrev" title="Taaksepäin">◀</button>
+      <button id="btnPlay">▶ Toista</button>
+      <button id="btnNext" title="Eteenpäin">▶</button>
+      <select id="stepSel"><option value="1">1 pv</option><option value="7" selected>1 vk</option></select>
+      <select id="speed"><option value="800">Hidas</option><option value="350" selected>Normaali</option><option value="120">Nopea</option></select>
+      <button id="btnToday" class="ghost">Tänään</button>
+    </div>
   </div>
   <div id="legend"></div>
 </section>
 
 <section>
-  <h2>4. Vienti</h2>
+  <h2>3. Valitut objektit</h2>
+  <div id="selInfo" class="muted">Valitse objekteja mallista.</div>
+  <label>Tehtävä <select id="eTask"></select></label>
+  <label>Alku <input type="date" id="eStart"></label>
+  <label>Loppu <input type="date" id="eEnd"></label>
+  <label>Toteutunut <input type="date" id="eActual"></label>
   <div class="row">
-    <button id="btnExport">Vie aikataulu CSV:ksi</button>
-    <button id="btnTemplate" class="ghost">CSV-pohja valituista</button>
+    <button id="btnSave">Tallenna muutokset</button>
+    <button id="btnInstalled" title="Toteutunut-kentän päivä tai tänään">✓ Asennettu</button>
   </div>
-  <textarea id="out" rows="5" placeholder="CSV ilmestyy myös tähän (kopioi Exceliin)"></textarea>
+  <div class="row">
+    <button id="btnRevert" class="ghost">Palauta sääntöön</button>
+    <button id="btnUndo" class="ghost">↶ Kumoa</button>
+    <button id="btnSelMissing" class="ghost">Valitse aikataulutta olevat</button>
+  </div>
+  <div class="muted">Vain muuttamasi kentät (oranssi reunus) tallentuvat. Käsin annettu arvo ohittaa säännön ja säilyy, vaikka aikataulu päivittyy.</div>
 </section>
 
-<details><summary>Loki</summary><pre id="log"></pre></details>
+<section>
+  <h2>4. Vienti ja tallennus</h2>
+  <div class="row">
+    <button id="btnExport">Aikataulu CSV</button>
+    <button id="btnElemTpl" class="ghost">Elementtipohja (vaihe 2)</button>
+    <button id="btnSaveWork" class="ghost">Tallenna työtiedosto</button>
+  </div>
+  <div class="row"><button id="btnSS" class="ghost">Kokeellinen: toteuma Status Sharingista</button></div>
+  <textarea id="out" rows="4" placeholder="Vienti näkyy myös tässä (kopioi Exceliin)"></textarea>
+</section>
 
-<script src="app.js"></script>
+<details class="logbox"><summary>Loki</summary><pre id="log"></pre></details>
+
+<script src="app.js?v=2"></script>
 </body>
 </html>
