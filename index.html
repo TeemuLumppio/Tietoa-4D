@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.4</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.5</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -71,7 +71,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 <section>
   <h2>1. Lähtötiedot</h2>
   <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt,.json">
-  <div class="muted">Tocoman-aikataulu (xlsx/csv) · elementtilista vaihe 2 (csv/xlsx) · työtiedosto (.json)</div>
+  <div class="muted">Tocoman-aikataulu (xlsx/csv) · elementtiaikataulu vaihe 2 (csv/xlsx, vain betonielementit) · työtiedosto (.json)</div>
   <div class="row">
     <button id="btnRead">Lue malli</button>
     <button id="btnClearAll" class="ghost">Tyhjennä työ</button>
@@ -90,6 +90,9 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <label>Kerros <input type="text" id="pKerros"></label>
     <label>Nimi <input type="text" id="pNimi"></label>
     <label>Elementtitunnus <input type="text" id="pTunnus"></label>
+    <label>Tyyppi <input type="text" id="pTyyppi"></label>
+    <label>Betonielementin arvo <input type="text" id="pPrecast"></label>
+    <div class="muted">Elementtikohtainen aikataulu (vaihe 2) koskee vain objekteja, joiden tyyppi sisältää tämän arvon. Tyhjä = kaikki.</div>
     <div class="row">
       <button id="btnSaveProps" class="ghost">Tallenna ja lue malli</button>
       <button id="btnShowProps" class="ghost">Näytä valitun ominaisuudet</button>
@@ -170,7 +173,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <button id="btnUndo" class="ghost">↶ Kumoa</button>
     <button id="btnSelMissing" class="ghost">Valitse aikataulutta olevat</button>
   </div>
-  <div class="muted">Vain muuttamasi kentät (oranssi reunus) tallentuvat. Käsin annettu arvo ohittaa säännön ja Status Sharingin, ja säilyy, vaikka aikataulu päivittyy.</div>
+  <div class="muted">Vain muuttamasi kentät (oranssi reunus) tallentuvat. Käsin annettu arvo ohittaa säännön, elementtiaikataulun ja Status Sharingin, ja säilyy, vaikka aikataulu päivittyy.</div>
 </section>
 
 <section>
@@ -209,6 +212,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 "use strict";
-/* Tietoa 4D v2.4 – Trimble Connect 3D Viewer -laajennus
-   v2.4: toteuma Status Sharing API:sta (valittu action; työn alla- ja valmis-tila päivämäärineen). */
+/* Tietoa 4D v2.5 – Trimble Connect 3D Viewer -laajennus
+   v2.5: elementtikohtainen aikataulu (vaihe 2) koskee vain betonielementtejä (Elementin tyyppi = Precast).
+   Paikallavalut (anturat, sokkelit ym.) seuraavat vaiheen 1 tehtävää. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
@@ -202,6 +203,7 @@ const RULES = [
   [/HOLVI/, ["HOLVIT", "PV-HOLVI"]],
   [/KONSOL|KONSIL/, ["PV-KONSOLIT", "PV-KONSILOT", "KONSOLIT"]],
   [/ANTURA/, ["ANTURAT"]],
+  [/SOKKELI/, ["SOKKELIT", "SOKKELI", "PV-SOKKELIT"]],
   [/PORRA|PORTA/, ["PORTAAT"]],
   [/PARVEK/, ["PARVEKKEET"]]
 ];
@@ -234,7 +236,7 @@ function suggest(name, comps) {
 
 /* ================= Tila ================= */
 const $ = id => document.getElementById(id);
-const DEFAULT_PROPS = { lohko: "Elementin lohko", kerros: "Elementin kerros", nimi: "Elementin nimi", tunnus: "Elementin piirustusnumero" };
+const DEFAULT_PROPS = { lohko: "Elementin lohko", kerros: "Elementin kerros", nimi: "Elementin nimi", tunnus: "Elementin piirustusnumero", tyyppi: "Elementin tyyppi", precastVal: "Precast" };
 function freshState() { return { v: 2, tasks: [], key: {}, keyAuto: {}, manual: {}, elem: {}, props: Object.assign({}, DEFAULT_PROPS), ss: {} }; }
 let S = freshState();
 let API = null, projectKey = "tc4d2_default", projectId = null, projectLoc = "";
@@ -278,7 +280,10 @@ function loadLocal() {
     log("Palautettiin tallennettu työ: " + S.tasks.length + " tehtävää, " + Object.keys(S.manual).length + " käsin korjattua.");
   } catch (e) { /* ei tallennettua työtä */ }
 }
-function propsToUI() { $("pLohko").value = S.props.lohko; $("pKerros").value = S.props.kerros; $("pNimi").value = S.props.nimi; $("pTunnus").value = S.props.tunnus; }
+function propsToUI() {
+  $("pLohko").value = S.props.lohko; $("pKerros").value = S.props.kerros; $("pNimi").value = S.props.nimi;
+  $("pTunnus").value = S.props.tunnus; $("pTyyppi").value = S.props.tyyppi; $("pPrecast").value = S.props.precastVal;
+}
 
 /* ================= Mallin luku ================= */
 function flattenProps(p) {
@@ -308,16 +313,23 @@ function prop(f, name) {
   for (const kk in f) if (kk.endsWith("." + k)) return f[kk];
   return "";
 }
+function isPrecast(tyyppi) {
+  const pv = up(S.props.precastVal);
+  if (!pv) return true;
+  return up(tyyppi).indexOf(pv) >= 0;
+}
 function makeObj(modelId, rid, hex, fields) {
   const f = fields || {};
-  const nimi = String(f.nimi || "").trim(), rl = String(f.lohko || "").trim(), rk = String(f.kerros || "").trim(), tun = String(f.tunnus || "").trim();
+  const nimi = String(f.nimi || "").trim(), rl = String(f.lohko || "").trim(), rk = String(f.kerros || "").trim(),
+    tun = String(f.tunnus || "").trim(), ty = String(f.tyyppi || "").trim();
   return {
     k: modelId + "|" + rid, modelId, rid, id: hex || (modelId + "|" + rid),
     nimi, nimiU: up(nimi), rawLohko: rl, rawKerros: rk, lohko: normLohko(rl), kerros: normKerros(rk),
-    tunnus: tun, tunnusKey: up(tun), extra: !fields,
+    tunnus: tun, tunnusKey: up(tun), tyyppi: ty, precast: !!fields && isPrecast(ty), extra: !fields,
     osa: "", autoTaskId: null, taskId: null, start: null, end: null, actual: null, actStart: null, actSrc: "", src: ""
   };
 }
+function elemOf(o) { return (o.precast && o.tunnusKey) ? (S.elem[o.tunnusKey] || null) : null; }
 
 async function readModel() {
   if (!API) return;
@@ -329,7 +341,7 @@ async function readModel() {
   let all = 0;
   mos.forEach(m => { all += (m.objects || []).length; });
   if (!all) { busy(""); log("Mallista ei löytynyt objekteja. Onko malli ladattu katselimeen?"); return; }
-  let done = 0, elems = 0;
+  let done = 0, elems = 0, pc = 0;
   for (const mo of mos) {
     const ids = (mo.objects || []).map(x => (typeof x === "number" ? x : (x ? x.id : null))).filter(x => Number.isInteger(x));
     allIds.set(mo.modelId, (allIds.get(mo.modelId) || []).concat(ids));
@@ -344,11 +356,12 @@ async function readModel() {
         const p = pm.get(rid) || props[j];
         if (!p) return;
         const f = flattenProps(p);
-        const fields = { nimi: prop(f, S.props.nimi), lohko: prop(f, S.props.lohko), kerros: prop(f, S.props.kerros), tunnus: prop(f, S.props.tunnus) };
+        const fields = { nimi: prop(f, S.props.nimi), lohko: prop(f, S.props.lohko), kerros: prop(f, S.props.kerros), tunnus: prop(f, S.props.tunnus), tyyppi: prop(f, S.props.tyyppi) };
         if (!String(fields.nimi || "").trim() && !String(fields.lohko || "").trim() && !String(fields.kerros || "").trim() && !String(fields.tunnus || "").trim()) return;
         const o = makeObj(mo.modelId, rid, guidToHex(ext[j]), fields);
         objs.set(o.k, o);
         elems++;
+        if (o.precast) pc++;
         if (o.nimiU) nameCounts.set(o.nimiU, (nameCounts.get(o.nimiU) || 0) + 1);
       });
       done += part.length;
@@ -356,8 +369,9 @@ async function readModel() {
     }
   }
   modelRead = true;
-  log("Malli luettu: " + all + " objektia, joista " + elems + " elementtitiedoilla, " + nameCounts.size + " eri nimeä.");
+  log("Malli luettu: " + all + " objektia, joista " + elems + " elementtitiedoilla (" + pc + " betonielementtiä, " + (elems - pc) + " muuta), " + nameCounts.size + " eri nimeä.");
   if (!elems) log("Kenttiä \"" + S.props.nimi + "\" / \"" + S.props.lohko + "\" ei löytynyt. Tarkista kenttien nimet kohdasta Asetukset → Näytä valitun ominaisuudet.");
+  else if (!pc && S.props.precastVal) log("Betonielementtejä ei tunnistettu: kentässä \"" + S.props.tyyppi + "\" ei ole arvoa \"" + S.props.precastVal + "\". Tarkista Asetukset.");
   await readHierarchy();
   await resolveOrphans();
   await resolveSS();
@@ -531,7 +545,7 @@ function distribute() {
   orderDay = new Map();
   const groups = new Map();
   for (const o of objs.values()) {
-    const e = o.tunnusKey ? S.elem[o.tunnusKey] : null;
+    const e = elemOf(o);
     if (!e || e.order == null || e.start != null || e.end != null || !o.taskId) continue;
     if (!groups.has(o.taskId)) groups.set(o.taskId, new Map());
     groups.get(o.taskId).set(o.tunnusKey, e.order);
@@ -549,7 +563,7 @@ function distribute() {
 }
 function effDates(o) {
   const m = S.manual[o.id] || {};
-  const e = o.tunnusKey ? S.elem[o.tunnusKey] : null;
+  const e = elemOf(o);
   const t = o.taskId ? taskById.get(o.taskId) : null;
   let start = null, end = null, src = "";
   if (t) { start = t.start; end = t.end != null ? t.end : t.start; src = (m.taskId && m.taskId !== "__none") ? "käsin" : "sääntö"; }
@@ -570,7 +584,7 @@ function effDates(o) {
   o.ssC = ss ? ss.c : null;
   if (m.actual != null) { o.actual = m.actual; o.actSrc = "käsin"; }
   else if (o.ssC != null) { o.actual = o.ssC; o.actSrc = "Status Sharing"; }
-  else if (e && e.actual != null) { o.actual = e.actual; o.actSrc = "elementtilista"; }
+  else if (e && e.actual != null) { o.actual = e.actual; o.actSrc = "elementtiaikataulu"; }
   else { o.actual = null; o.actSrc = ""; }
   o.actStart = o.ssS;
   o.src = src;
@@ -594,17 +608,20 @@ function recalc() {
 function computeOne(o) { assignTask(o); effDates(o); }
 
 function updateInfo() {
-  let el = 0, sch = 0, man = 0, act = 0;
+  let el = 0, sch = 0, man = 0, act = 0, pc = 0, pcE = 0;
   for (const o of objs.values()) {
     if (o.extra && o.start == null && o.actual == null && o.actStart == null) continue;
     el++;
     if (o.start != null) sch++;
     if (o.src === "käsin") man++;
     if (o.actual != null) act++;
+    if (o.precast) { pc++; if (o.src === "elementti") pcE++; }
   }
   const parts = [S.tasks.length ? S.tasks.length + " tehtävää" : "Ei aikataulua"];
-  if (modelRead) parts.push(el + " elementtiä", sch + " aikataulussa", (el - sch) + " ilman");
-  else parts.push("mallia ei luettu");
+  if (modelRead) {
+    parts.push(el + " elementtiä", sch + " aikataulussa", (el - sch) + " ilman");
+    parts.push(pc + " betonielementtiä" + (pcE ? " (" + pcE + " elementtiaikataululla)" : ""));
+  } else parts.push("mallia ei luettu");
   if (man) parts.push(man + " käsin korjattu");
   if (act) parts.push(act + " asennettu");
   $("info").textContent = parts.join(" · ");
@@ -692,12 +709,12 @@ function allowedOf(a) {
 }
 function fillValSelects(a) {
   const vals = allowedOf(a);
-  const opt = (sel, def) => {
+  const opt = def => {
     const pick = vals.indexOf(def) >= 0 ? def : "";
     return '<option value="">– ei käytössä –</option>' + vals.map(v => '<option value="' + esc(v) + '"' + (v === pick ? " selected" : "") + ">" + esc(v) + "</option>").join("");
   };
-  $("ssStartVal").innerHTML = opt("s", S.ss.startVal || "Started");
-  $("ssDoneVal").innerHTML = opt("d", S.ss.doneVal || "Completed");
+  $("ssStartVal").innerHTML = opt(S.ss.startVal || "Started");
+  $("ssDoneVal").innerHTML = opt(S.ss.doneVal || "Completed");
 }
 function fillActionSelect() {
   const list = ssActions.length ? ssActions : (S.ss.actionId ? [{ id: S.ss.actionId, name: S.ss.actionName || S.ss.actionId, allowedValues: S.ss.allowed }] : []);
@@ -717,7 +734,7 @@ async function ssConnect() {
   try {
     let probe;
     try { probe = await fetch(ssBase() + "/auth/enabled/" + encodeURIComponent(projectId)); }
-    catch (e) { throw new Error("Status Sharing -palvelimeen ei saatu yhteyttä selaimesta (" + errMsg(e) + "). Syy on todennäköisesti CORS-esto: palvelin ei salli kutsuja laajennuksen osoitteesta."); }
+    catch (e) { throw new Error("Status Sharing -palvelimeen ei saatu yhteyttä selaimesta (" + errMsg(e) + "). Syy on todennäköisesti CORS-esto."); }
     log("Status Sharing: palvelin vastasi (HTTP " + probe.status + "): " + (await probe.text()).slice(0, 120));
     await ssExchange();
     log("Status Sharing: kirjautuminen onnistui.");
@@ -1064,7 +1081,7 @@ async function renderInput() {
   } else if (by === "task") {
     h += "<div>Jokainen tehtävä omalla värillään (" + (cnt.sched || 0) + " objektia). Valitse objekti nähdäksesi tehtävän.</div>";
   } else if (by === "source") {
-    h += sw(C.rule, "Tocoman-sääntö", cnt.rule) + sw(C.elem, "Elementtilista", cnt.elem) + sw(C.manual, "Käsin annettu", cnt.manual);
+    h += sw(C.rule, "Tocoman-sääntö (vaihe 1)", cnt.rule) + sw(C.elem, "Elementtiaikataulu (vaihe 2)", cnt.elem) + sw(C.manual, "Käsin annettu", cnt.manual);
   } else {
     h += sw(C.done, "Asennettu", cnt.done) + sw(C.late, "Myöhässä", cnt.late) + sw(C.wip, "Työn alla", cnt.wip) + sw(C.future, "Tulossa", cnt.future);
   }
@@ -1119,9 +1136,6 @@ function stepBack() {
   setDay(prev);
   return true;
 }
-/* Suunniteltu: piilossa ennen alkua, työn alla alku–loppu (loppupäivä mukaan lukien), valmis seuraavana päivänä.
-   Vertailu: valmis toteutuneesta päivästä, työn alla suunnitellusta alusta tai toteutuneesta aloituksesta,
-   myöhässä kun suunniteltu loppu ohitettu ilman valmistumista. */
 function stateOf(o, d, mode) {
   const ps = o.start, pe = o.end != null ? o.end : o.start;
   if (mode === "compare") {
@@ -1275,6 +1289,10 @@ function reason(o) {
 }
 function setEditEnabled(b) { ["eTask", "eStart", "eEnd", "eActual", "btnSave", "btnInstalled", "btnRevert"].forEach(id => { $(id).disabled = !b; }); }
 function clearDirty() { ["eTask", "eStart", "eEnd", "eActual"].forEach(id => { $(id).dataset.dirty = ""; $(id).classList.remove("dirty"); }); }
+function typeLabel(o) {
+  if (o.extra) return "–";
+  return (o.tyyppi || "–") + (o.precast ? " (betonielementti)" : " (vaihe 1 -tehtävä)");
+}
 function showSelection() {
   clearDirty();
   const n = selected.length;
@@ -1297,10 +1315,12 @@ function showSelection() {
     const row = (k, v) => "<tr><td>" + k + "</td><td>" + esc(v) + "</td></tr>";
     let ssTxt = "–";
     if (o.ssS != null || o.ssC != null) ssTxt = (o.ssS != null ? (S.ss.startVal || "aloitettu") + " " + fmt(o.ssS) : "") + (o.ssS != null && o.ssC != null ? ", " : "") + (o.ssC != null ? (S.ss.doneVal || "valmis") + " " + fmt(o.ssC) : "");
+    const e = elemOf(o);
     $("selInfo").innerHTML = '<table class="tbl kv">' +
-      row("Nimi", o.nimi || "–") + row("Lohko / kerros", (o.rawLohko || "–") + " / " + (o.rawKerros || "–")) +
+      row("Nimi", o.nimi || "–") + row("Tyyppi", typeLabel(o)) + row("Lohko / kerros", (o.rawLohko || "–") + " / " + (o.rawKerros || "–")) +
       row("Tunnus", o.tunnus || "–") + row("Rakennusosa", o.osa || "–") +
       row("Tehtävä", t ? taskLabel(t) : "– (" + reason(o) + ")") +
+      (o.precast ? row("Elementtiaikataulu", e ? (e.start != null || e.end != null ? fmt(e.start) + " – " + fmt(e.end != null ? e.end : e.start) : "järjestys " + e.order) : "–") : "") +
       row("Aikataulu", o.start != null ? fmt(o.start) + " – " + fmt(o.end) + " (" + o.src + ")" : "–") +
       row("Toteutunut", o.actual != null ? fmt(o.actual) + " (" + o.actSrc + ")" : "–") +
       (S.ss && S.ss.data ? row("Status Sharing", ssTxt) : "") + "</table>";
@@ -1310,7 +1330,8 @@ function showSelection() {
     if (ct === undefined) diff.push("tehtävät");
     if (ca === undefined) diff.push("toteumat");
     const noSch = selected.filter(o => o.start == null).length;
-    $("selInfo").innerHTML = "<b>" + n + " objektia valittu</b>" + (diff.length ? '<div class="muted">Eroavat: ' + diff.join(", ") + " – tyhjä kenttä = useita arvoja</div>" : "") +
+    const pc = selected.filter(o => o.precast).length;
+    $("selInfo").innerHTML = "<b>" + n + " objektia valittu</b> (" + pc + " betonielementtiä)" + (diff.length ? '<div class="muted">Eroavat: ' + diff.join(", ") + " – tyhjä kenttä = useita arvoja</div>" : "") +
       (noSch ? '<div class="muted">' + noSch + " ilman aikataulua</div>" : "");
   }
 }
@@ -1377,11 +1398,11 @@ function undo() {
 /* ================= Tuonti ================= */
 const ALIAS = {
   guid: ["guid", "ifcguid", "ifc guid", "globalid"],
-  tunnus: ["tunnus", "elementtitunnus", "piirustusnumero", "elementin piirustusnumero"],
-  order: ["järjestys", "asennusjärjestys", "jarjestys", "order"],
-  start: ["alku", "suunniteltu alku", "asennuspvm", "suunniteltu pvm", "pvm", "planned_start", "planned_start_e", "planned_start_f", "planned_start_d"],
+  tunnus: ["tunnus", "elementtitunnus", "elementin tunnus", "elementti", "piirustusnumero", "elementin piirustusnumero", "positio", "position"],
+  order: ["järjestys", "asennusjärjestys", "jarjestys", "asennusjarjestys", "order", "nro"],
+  start: ["alku", "suunniteltu alku", "asennuspvm", "asennuspäivä", "asennuspaiva", "asennus pvm", "suunniteltu asennus", "suunniteltu pvm", "pvm", "planned_start", "planned_start_e", "planned_start_f", "planned_start_d"],
   end: ["loppu", "suunniteltu loppu", "planned_end"],
-  actual: ["toteutunut", "asennettu", "toteutunut pvm", "actual_end", "actual_end_e", "actual_end_f", "actual_end_d"]
+  actual: ["toteutunut", "asennettu", "toteutunut pvm", "toteutunut asennus", "actual_end", "actual_end_e", "actual_end_f", "actual_end_d"]
 };
 function findCol(hdr, list) { for (const a of list) { const i = hdr.indexOf(a); if (i >= 0) return i; } return -1; }
 
@@ -1389,10 +1410,13 @@ function importRows(rows, fname) {
   if (!rows || !rows.length) return false;
   const tasks = parseTocoman(rows);
   if (tasks && tasks.length) { importTasks(tasks, fname); return true; }
-  const hdr = (rows[0] || []).map(x => String(x == null ? "" : x).trim().toLowerCase());
-  const hasVal = ["order", "start", "end", "actual"].some(k => findCol(hdr, ALIAS[k]) >= 0);
-  if (findCol(hdr, ALIAS.tunnus) >= 0 && hasVal) { importElems(rows, hdr, fname); return true; }
-  if (findCol(hdr, ALIAS.guid) >= 0 || guidToHex((rows[0] || [])[0]) || guidToHex((rows[1] || [])[0])) { importGuidRows(rows, hdr, fname); return true; }
+  for (let hi = 0; hi < Math.min(rows.length, 10); hi++) {
+    const hdr = (rows[hi] || []).map(x => String(x == null ? "" : x).trim().toLowerCase());
+    const hasVal = ["order", "start", "end", "actual"].some(k => findCol(hdr, ALIAS[k]) >= 0);
+    if (findCol(hdr, ALIAS.tunnus) >= 0 && hasVal) { importElems(rows.slice(hi), hdr, fname); return true; }
+  }
+  const hdr0 = (rows[0] || []).map(x => String(x == null ? "" : x).trim().toLowerCase());
+  if (findCol(hdr0, ALIAS.guid) >= 0 || guidToHex((rows[0] || [])[0]) || guidToHex((rows[1] || [])[0])) { importGuidRows(rows, hdr0, fname); return true; }
   return false;
 }
 function importTasks(tasks, fname) {
@@ -1411,9 +1435,9 @@ function importTasks(tasks, fname) {
 }
 function importElems(rows, hdr, fname) {
   const ci = { t: findCol(hdr, ALIAS.tunnus), o: findCol(hdr, ALIAS.order), s: findCol(hdr, ALIAS.start), e: findCol(hdr, ALIAS.end), a: findCol(hdr, ALIAS.actual) };
-  const keys = new Set();
-  for (const o of objs.values()) if (o.tunnusKey) keys.add(o.tunnusKey);
-  let n = 0, cleared = 0, match = 0;
+  const pcKeys = new Set(), otherKeys = new Set();
+  for (const o of objs.values()) if (o.tunnusKey) (o.precast ? pcKeys : otherKeys).add(o.tunnusKey);
+  let n = 0, cleared = 0, match = 0, notPc = 0;
   for (const r of rows.slice(1)) {
     const g = i => (i >= 0 && i < r.length) ? r[i] : null;
     const key = up(g(ci.t));
@@ -1424,10 +1448,13 @@ function importElems(rows, hdr, fname) {
     if (e.order == null && e.start == null && e.end == null && e.actual == null) { if (S.elem[key]) { delete S.elem[key]; cleared++; } continue; }
     S.elem[key] = e;
     n++;
-    if (keys.has(key)) match++;
+    if (pcKeys.has(key)) match++;
+    else if (otherKeys.has(key)) notPc++;
   }
   save(); recalc(); render(true); showSelection();
-  log("Elementtilista " + fname + ": " + n + " elementtiä" + (modelRead ? ", joista " + match + " löytyi mallista" : "") + (cleared ? ", " + cleared + " tyhjennetty" : "") + ".");
+  log("Elementtiaikataulu " + fname + ": " + n + " riviä" + (modelRead ? ", joista " + match + " kohdistui betonielementteihin" +
+    (notPc ? ", " + notPc + " ohitettiin (ei betonielementti – seuraa vaiheen 1 tehtävää)" : "") +
+    ((n - match - notPc) > 0 ? ", " + (n - match - notPc) + " tunnusta ei löytynyt mallista" : "") : "") + (cleared ? ", " + cleared + " tyhjennetty" : "") + ".");
 }
 function importGuidRows(rows, hdr, fname) {
   let gi = findCol(hdr, ALIAS.guid), si, ei, ai, body;
@@ -1476,14 +1503,14 @@ function download(text, name, mime) {
   } catch (e) { log("Lataus estetty – kopioi sisältö tekstikentästä."); }
 }
 function exportSchedule() {
-  const lines = ["GUID;Tunnus;Nimi;Lohko;Kerros;Rakennusosa;Tehtävä;Suunniteltu alku;Suunniteltu loppu;Aloitettu (Status Sharing);Toteutunut;Toteuman lähde;Aikataulun lähde"];
+  const lines = ["GUID;Tunnus;Nimi;Tyyppi;Lohko;Kerros;Rakennusosa;Tehtävä;Suunniteltu alku;Suunniteltu loppu;Aloitettu (Status Sharing);Toteutunut;Toteuman lähde;Aikataulun lähde"];
   const seen = new Set();
   for (const o of objs.values()) {
     if (seen.has(o.id)) continue;
     seen.add(o.id);
     if (o.extra && !hasAnyDate(o)) continue;
     const t = o.taskId ? taskById.get(o.taskId) : null;
-    lines.push([isHex(o.id) ? hexToIfc(o.id) : "", o.tunnus, o.nimi, o.rawLohko, o.rawKerros, o.osa, t ? taskLabel(t) : "",
+    lines.push([isHex(o.id) ? hexToIfc(o.id) : "", o.tunnus, o.nimi, o.tyyppi, o.rawLohko, o.rawKerros, o.osa, t ? taskLabel(t) : "",
       fmt(o.start), fmt(o.end), fmt(o.actStart), fmt(o.actual), o.actSrc, o.src].map(csvCell).join(";"));
   }
   download(lines.join("\r\n"), "tietoa-4d-aikataulu.csv");
@@ -1491,8 +1518,13 @@ function exportSchedule() {
 }
 function exportElemTemplate() {
   const by = new Map();
-  for (const o of objs.values()) if (o.tunnusKey && !by.has(o.tunnusKey)) by.set(o.tunnusKey, o);
-  if (!by.size) { alert("Mallista ei löytynyt elementtitunnuksia (kenttä \"" + S.props.tunnus + "\"). Lue malli ensin."); return; }
+  let noTunnus = 0;
+  for (const o of objs.values()) {
+    if (!o.precast) continue;
+    if (!o.tunnusKey) { noTunnus++; continue; }
+    if (!by.has(o.tunnusKey)) by.set(o.tunnusKey, o);
+  }
+  if (!by.size) { alert("Mallista ei löytynyt betonielementtejä, joilla on elementtitunnus (tyyppi \"" + S.props.precastVal + "\", tunnus kentässä \"" + S.props.tunnus + "\"). Lue malli ensin tai tarkista Asetukset."); return; }
   const list = [...by.values()].sort((a, b) => ((a.start == null ? 1e9 : a.start) - (b.start == null ? 1e9 : b.start)) || a.tunnus.localeCompare(b.tunnus, "fi"));
   const lines = ["Tunnus;Nimi;Lohko;Kerros;Tehtävä;Tehtävän alku;Tehtävän loppu;Järjestys;Alku;Loppu;Toteutunut"];
   for (const o of list) {
@@ -1502,7 +1534,7 @@ function exportElemTemplate() {
       e.order == null ? "" : e.order, fmt(e.start), fmt(e.end), fmt(e.actual)].map(csvCell).join(";"));
   }
   download(lines.join("\r\n"), "tietoa-4d-elementit.csv");
-  log("Elementtipohja: " + list.length + " elementtiä. Täytä Järjestys TAI Alku/Loppu ja tuo tiedosto takaisin.");
+  log("Elementtipohja: " + list.length + " betonielementtiä" + (noTunnus ? " (" + noTunnus + " ilman tunnusta jätetty pois)" : "") + ". Täytä Järjestys TAI Alku/Loppu ja tuo tiedosto takaisin.");
 }
 function saveWork() {
   download(JSON.stringify(Object.assign({ savedAt: new Date().toISOString() }, S)), "tietoa-4d-tyotiedosto.json", "application/json");
@@ -1550,12 +1582,12 @@ $("file").addEventListener("change", async ev => {
         if (importRows(rows, f.name + " / " + sn)) { ok = true; break; }
       }
     } else ok = importRows(parseCSV(await f.text()), f.name);
-    if (!ok) { log("Tiedostoa " + f.name + " ei tunnistettu (Tocoman: Nimi+Alku, elementtilista: Tunnus+Järjestys/Alku, tai GUID)."); alert("Tiedoston muotoa ei tunnistettu – katso loki."); }
+    if (!ok) { log("Tiedostoa " + f.name + " ei tunnistettu (Tocoman: Nimi+Alku, elementtiaikataulu: Tunnus + Järjestys/Asennuspäivä, tai GUID)."); alert("Tiedoston muotoa ei tunnistettu – katso loki."); }
   } catch (e) { log("Tuonti epäonnistui: " + errMsg(e)); alert("Tiedoston luku epäonnistui – katso loki."); }
 });
 $("btnRead").onclick = () => readModel();
 $("btnClearAll").onclick = async () => {
-  if (!confirm("Tyhjennetäänkö koko työ tästä projektista (aikataulu, avainkirja, elementtilista, käsin korjaukset ja haettu toteuma)? Tallenna työtiedosto ensin, jos haluat säilyttää ne.")) return;
+  if (!confirm("Tyhjennetäänkö koko työ tästä projektista (aikataulu, avainkirja, elementtiaikataulu, käsin korjaukset ja haettu toteuma)? Tallenna työtiedosto ensin, jos haluat säilyttää ne.")) return;
   const props = S.props;
   S = freshState(); S.props = props;
   ssByK = new Map();
@@ -1564,7 +1596,8 @@ $("btnClearAll").onclick = async () => {
   log("Työ tyhjennetty.");
 };
 $("btnSaveProps").onclick = () => {
-  S.props = { lohko: $("pLohko").value.trim(), kerros: $("pKerros").value.trim(), nimi: $("pNimi").value.trim(), tunnus: $("pTunnus").value.trim() };
+  S.props = { lohko: $("pLohko").value.trim(), kerros: $("pKerros").value.trim(), nimi: $("pNimi").value.trim(), tunnus: $("pTunnus").value.trim(),
+    tyyppi: $("pTyyppi").value.trim(), precastVal: $("pPrecast").value.trim() };
   save(); readModel();
 };
 $("btnShowProps").onclick = () => showProps();
