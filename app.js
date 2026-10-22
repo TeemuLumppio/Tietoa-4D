@@ -1,7 +1,7 @@
 "use strict";
-/* Tietoa 4D v2.5 – Trimble Connect 3D Viewer -laajennus
-   v2.5: elementtikohtainen aikataulu (vaihe 2) koskee vain betonielementtejä (Elementin tyyppi = Precast).
-   Paikallavalut (anturat, sokkelit ym.) seuraavat vaiheen 1 tehtävää. */
+/* Tietoa 4D v2.6 – Trimble Connect 3D Viewer -laajennus
+   v2.6: väritys oletuksena pois; myöhässä (aloitettu, ei valmis) vs. ei kirjausta erikseen;
+   Toteuman lähde -väritys; avainkirjan massatoiminnot. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
@@ -326,7 +326,7 @@ function makeObj(modelId, rid, hex, fields) {
     k: modelId + "|" + rid, modelId, rid, id: hex || (modelId + "|" + rid),
     nimi, nimiU: up(nimi), rawLohko: rl, rawKerros: rk, lohko: normLohko(rl), kerros: normKerros(rk),
     tunnus: tun, tunnusKey: up(tun), tyyppi: ty, precast: !!fields && isPrecast(ty), extra: !fields,
-    osa: "", autoTaskId: null, taskId: null, start: null, end: null, actual: null, actStart: null, actSrc: "", src: ""
+    osa: "", autoTaskId: null, taskId: null, start: null, end: null, actual: null, actStart: null, actSrc: "", mAct: null, src: ""
   };
 }
 function elemOf(o) { return (o.precast && o.tunnusKey) ? (S.elem[o.tunnusKey] || null) : null; }
@@ -582,9 +582,11 @@ function effDates(o) {
   const ss = ssByK.get(o.k);
   o.ssS = ss ? ss.s : null;
   o.ssC = ss ? ss.c : null;
-  if (m.actual != null) { o.actual = m.actual; o.actSrc = "käsin"; }
+  o.mAct = m.actual != null ? m.actual : null;
+  o.elemAct = (e && e.actual != null) ? e.actual : null;
+  if (o.mAct != null) { o.actual = o.mAct; o.actSrc = "käsin"; }
   else if (o.ssC != null) { o.actual = o.ssC; o.actSrc = "Status Sharing"; }
-  else if (e && e.actual != null) { o.actual = e.actual; o.actSrc = "elementtiaikataulu"; }
+  else if (o.elemAct != null) { o.actual = o.elemAct; o.actSrc = "elementtiaikataulu"; }
   else { o.actual = null; o.actSrc = ""; }
   o.actStart = o.ssS;
   o.src = src;
@@ -891,7 +893,7 @@ function keySummary() {
   const names = [...nameCounts.keys()];
   const auto = names.filter(n => S.keyAuto[n]).length;
   const unm = names.filter(n => !S.key[n]).length;
-  $("keySum").textContent = "Avainkirja: " + names.length + " nimeä" + (unm ? " · " + unm + " liittämättä" : "") + (auto ? " · " + auto + " ehdotusta" : "");
+  $("keySum").textContent = "Avainkirja: " + names.length + " nimeä" + (unm ? " · " + unm + " ei aikataulussa" : "") + (auto ? " · " + auto + " ehdotusta" : "");
 }
 function renderKeyTable() {
   keySummary();
@@ -905,12 +907,34 @@ function renderKeyTable() {
     '<td><select data-name="' + esc(nc[0]) + '">' + opts(S.key[nc[0]] || "") + "</select></td></tr>").join("") + "</table>";
   $("keyTable").querySelectorAll("select").forEach(sel => sel.addEventListener("change", () => {
     const n = sel.getAttribute("data-name");
+    pushKeyUndo();
     S.key[n] = sel.value;
     delete S.keyAuto[n];
     const td = sel.closest("tr").querySelector("td");
     if (td) td.className = "";
     save(); keySummary(); recalc(); render(false); showSelection();
   }));
+}
+function pushKeyUndo() {
+  undoStack.push({ __key: true, key: Object.assign({}, S.key), keyAuto: Object.assign({}, S.keyAuto) });
+  if (undoStack.length > 50) undoStack.shift();
+}
+function keyAcceptAll() {
+  const names = [...nameCounts.keys()].filter(n => S.keyAuto[n]);
+  if (!names.length) { log("Ei hyväksyttäviä ehdotuksia."); return; }
+  pushKeyUndo();
+  names.forEach(n => { delete S.keyAuto[n]; if (S.key[n] == null) S.key[n] = ""; });
+  save(); renderKeyTable(); recalc(); render(false); showSelection();
+  log("Hyväksytty " + names.length + " ehdotusta. Niitä ei enää päivitetä automaattisesti.");
+}
+function keyNoneAll() {
+  const names = [...nameCounts.keys()];
+  if (!names.length) { log("Lue malli ensin."); return; }
+  if (!confirm("Asetetaanko kaikki " + names.length + " elementtinimeä tilaan \"ei aikataulussa\"?\n\nMikään osa ei silloin saa aikataulua automaattisesti. Käsin liitetyt osat (kohta 3) säilyvät. Muutoksen voi kumota Kumoa-painikkeella.")) return;
+  pushKeyUndo();
+  names.forEach(n => { S.key[n] = ""; delete S.keyAuto[n]; });
+  save(); renderKeyTable(); recalc(); render(false); showSelection();
+  log("Kaikki " + names.length + " elementtinimeä asetettu tilaan \"ei aikataulussa\".");
 }
 function renderCoverage() {
   if (!$("covBox").open) return;
@@ -933,8 +957,9 @@ function renderCoverage() {
   h += "</table>";
   const tbl = (map, attr) => '<table class="tbl">' + [...map.entries()].sort((a, b) => b[1] - a[1])
     .map(e => "<tr " + attr + '="' + esc(e[0]) + '"><td>' + esc(e[0]) + "</td><td>" + e[1] + "</td></tr>").join("") + "</table>";
-  if (noTask.size) h += "<h3>Rakennusosa tunnistettu, tehtävää ei löydy (lohko / kerros / osa)</h3>" + tbl(noTask, "data-nt");
-  if (noKey.size) h += "<h3>Nimeä ei ole liitetty rakennusosaan</h3>" + tbl(noKey, "data-nk");
+  if (noTask.size) h += "<h3>Rakennusosa tunnistettu, mutta lohko/kerros ei osu yhteenkään tehtävään (lohko / kerros / osa)</h3>" + tbl(noTask, "data-nt");
+  if (noKey.size) h += "<h3>Elementtinimet ilman rakennusosaa (avainkirjassa: ei aikataulussa)</h3>" +
+    '<div class="muted">Nämä eivät saa aikataulua automaattisesti. Valitse niille rakennusosa avainkirjasta tai liitä osat käsin kohdassa 3.</div>' + tbl(noKey, "data-nk");
   $("coverage").innerHTML = h;
   $("coverage").querySelectorAll("tr[data-task]").forEach(tr => tr.addEventListener("click", () => { const id = tr.getAttribute("data-task"); selectWhere(o => o.taskId === id); }));
   $("coverage").querySelectorAll("tr[data-nt]").forEach(tr => tr.addEventListener("click", () => {
@@ -959,8 +984,10 @@ async function selectWhere(pred) {
 const C = {
   grey: { r: 150, g: 150, b: 150, a: 255 }, magenta: { r: 236, g: 0, b: 140, a: 255 }, ghost: { r: 200, g: 200, b: 200, a: 40 },
   wip: { r: 245, g: 158, b: 11, a: 255 }, done: { r: 22, g: 163, b: 74, a: 255 }, late: { r: 220, g: 38, b: 38, a: 255 },
-  future: { r: 125, g: 175, b: 225, a: 255 },
-  rule: { r: 37, g: 99, b: 235, a: 255 }, elem: { r: 13, g: 148, b: 136, a: 255 }, manual: { r: 234, g: 88, b: 12, a: 255 }
+  nodata: { r: 139, g: 92, b: 246, a: 255 }, future: { r: 125, g: 175, b: 225, a: 255 },
+  rule: { r: 37, g: 99, b: 235, a: 255 }, elem: { r: 13, g: 148, b: 136, a: 255 }, manual: { r: 234, g: 88, b: 12, a: 255 },
+  aSS: { r: 22, g: 163, b: 74, a: 255 }, aSSwip: { r: 245, g: 158, b: 11, a: 255 }, aMan: { r: 37, g: 99, b: 235, a: 255 },
+  aElem: { r: 14, g: 165, b: 233, a: 255 }, aConf: { r: 220, g: 38, b: 38, a: 255 }, noAct: { r: 200, g: 200, b: 200, a: 255 }
 };
 const TASK_PAL = [[31, 119, 180], [255, 127, 14], [44, 160, 44], [214, 39, 40], [148, 103, 189], [140, 86, 75], [227, 119, 194], [188, 189, 34], [23, 190, 207], [57, 59, 121], [99, 121, 57], [140, 109, 49]];
 const RESET = { visible: "reset", color: "reset" };
@@ -1024,13 +1051,22 @@ function noneRow(n) {
   const hidden = unschedValue() === "hide";
   return '<div><span class="sw" style="background:' + unschedCss() + '"></span>Ei aikataulua' + (hidden ? " (piilossa)" : "") + ": <b>" + (n || 0) + "</b></div>";
 }
+/* Myöhässä = aloitus kirjattu (tai valmistunut myöhemmin) ja suunniteltu loppu ohitettu.
+   Ei kirjausta = suunniteltu loppu ohitettu eikä toteumasta ole mitään tietoa. */
 function todayState(o, today) {
   if (o.actual != null && o.actual <= today) return "done";
   const startedNow = o.actStart != null && o.actStart <= today;
   if (o.start == null) return startedNow ? "wip" : null;
-  if (o.end != null && o.end < today) return "late";
+  if (o.end != null && o.end < today) return startedNow ? "late" : "nodata";
   if (o.start <= today || startedNow) return "wip";
   return "future";
+}
+function actSrcKey(o) {
+  if (o.mAct != null) return (o.ssC != null && o.ssC !== o.mAct) ? "aConf" : "aMan";
+  if (o.ssC != null) return "aSS";
+  if (o.elemAct != null) return "aElem";
+  if (o.actStart != null) return "aSSwip";
+  return null;
 }
 
 async function renderInput() {
@@ -1049,6 +1085,13 @@ async function renderInput() {
       if (!s) { if (!o.extra) inc("none"); continue; }
       inc(s);
       addTo(groups, s, { visible: true, color: C[s] }, o);
+      continue;
+    }
+    if (by === "actsrc") {
+      const k = actSrcKey(o);
+      if (k) { inc(k); addTo(groups, k, { visible: true, color: C[k] }, o); continue; }
+      if (o.start != null) { inc("noAct"); addTo(groups, "noAct", { visible: true, color: C.noAct }, o); continue; }
+      if (!o.extra) inc("none");
       continue;
     }
     if (o.start == null) { if (!o.extra) inc("none"); continue; }
@@ -1082,8 +1125,13 @@ async function renderInput() {
     h += "<div>Jokainen tehtävä omalla värillään (" + (cnt.sched || 0) + " objektia). Valitse objekti nähdäksesi tehtävän.</div>";
   } else if (by === "source") {
     h += sw(C.rule, "Tocoman-sääntö (vaihe 1)", cnt.rule) + sw(C.elem, "Elementtiaikataulu (vaihe 2)", cnt.elem) + sw(C.manual, "Käsin annettu", cnt.manual);
+  } else if (by === "actsrc") {
+    h += sw(C.aSS, "Status Sharing: valmis", cnt.aSS) + sw(C.aSSwip, "Status Sharing: työn alla", cnt.aSSwip) +
+      sw(C.aMan, "Käsin kirjattu", cnt.aMan) + sw(C.aElem, "Elementtiaikataulu", cnt.aElem) +
+      sw(C.aConf, "Käsin, poikkeaa Status Sharingista", cnt.aConf) + sw(C.noAct, "Aikataulussa, ei toteumaa", cnt.noAct);
   } else {
-    h += sw(C.done, "Asennettu", cnt.done) + sw(C.late, "Myöhässä", cnt.late) + sw(C.wip, "Työn alla", cnt.wip) + sw(C.future, "Tulossa", cnt.future);
+    h += sw(C.done, "Valmis", cnt.done) + sw(C.wip, "Työn alla", cnt.wip) + sw(C.late, "Myöhässä (aloitettu, ei valmis)", cnt.late) +
+      sw(C.nodata, "Ei kirjausta (suunniteltu loppu ohi)", cnt.nodata) + sw(C.future, "Tulossa", cnt.future);
   }
   $("legend").innerHTML = h + noneRow(cnt.none);
 }
@@ -1142,7 +1190,7 @@ function stateOf(o, d, mode) {
     if (o.actual != null && d >= o.actual) return "done";
     const startedNow = o.actStart != null && d >= o.actStart;
     if (ps == null) { if (startedNow) return "wip"; return (o.actual != null || o.actStart != null) ? "hidden" : "none"; }
-    if (d > pe) return "late";
+    if (d > pe) return (startedNow || o.actual != null) ? "late" : "nodata";
     if (d >= ps || startedNow) return "wip";
     return "hidden";
   }
@@ -1155,6 +1203,7 @@ function playStyle(s) {
   if (s === "hidden") return { visible: false };
   if (s === "wip") return { visible: true, color: C.wip };
   if (s === "late") return { visible: true, color: C.late };
+  if (s === "nodata") return { visible: true, color: C.nodata };
   return { visible: true, color: C.done };
 }
 async function renderPlay(force) {
@@ -1166,7 +1215,7 @@ async function renderPlay(force) {
   }
   if (force) { lastState.clear(); await applyBase(); }
   const mode = $("playMode").value;
-  const groups = new Map(), cnt = { hidden: 0, wip: 0, done: 0, late: 0, none: 0 };
+  const groups = new Map(), cnt = { hidden: 0, wip: 0, done: 0, late: 0, nodata: 0, none: 0 };
   for (const o of objs.values()) {
     const s = stateOf(o, cur, mode);
     if (!(s === "none" && o.extra)) cnt[s]++;
@@ -1181,7 +1230,7 @@ async function renderPlay(force) {
   await applyGroups(groups);
   let h = '<div><span class="sw" style="background:#fff"></span>Tulossa (piilossa): <b>' + cnt.hidden + "</b></div>" +
     sw(C.wip, "Työn alla", cnt.wip) + sw(C.done, "Valmis", cnt.done);
-  if (mode === "compare") h += sw(C.late, "Myöhässä", cnt.late);
+  if (mode === "compare") h += sw(C.late, "Myöhässä (aloitettu, ei valmis)", cnt.late) + sw(C.nodata, "Ei kirjausta (suunniteltu loppu ohi)", cnt.nodata);
   $("legend").innerHTML = h + noneRow(cnt.none);
 }
 async function play() {
@@ -1200,7 +1249,7 @@ async function play() {
 }
 
 /* ---- Piirron ohjaus ---- */
-let rendering = false, again = false, againForce = false, offApplied = false;
+let rendering = false, again = false, againForce = false, colored = false;
 function viewMode() { const r = document.querySelector('input[name="vm"]:checked'); return r ? r.value : "input"; }
 async function render(force) {
   if (!API) return;
@@ -1208,10 +1257,10 @@ async function render(force) {
   rendering = true;
   try {
     if (!$("colorOn").checked) {
-      if (!offApplied || force) { await setAll(RESET); lastState.clear(); offApplied = true; }
-      $("legend").innerHTML = '<div class="muted">Väritys pois päältä – malli omilla väreillään.</div>';
+      if (colored) { await setAll(RESET); lastState.clear(); colored = false; }
+      $("legend").innerHTML = '<div class="muted">Väritys pois – malli omilla väreillään. Kytke yläreunan "Väritä malli" päälle.</div>';
     } else {
-      offApplied = false;
+      colored = true;
       if (viewMode() === "input") await renderInput();
       else await renderPlay(force);
     }
@@ -1236,6 +1285,7 @@ async function testColor() {
   log("Testi: valittu rid " + rid + " = " + kind + (o ? " (" + (o.nimi || "–") + ", alaosia " + ((kids.get(o.k) || []).length) + ")" : "") + ".");
   try {
     await API.viewer.setObjectState({ modelObjectIds: [{ modelId: m.modelId, objectRuntimeIds: [rid] }] }, { visible: true, color: C.magenta });
+    colored = true;
     log("Testi: valittu objekti väritettiin magentaksi.");
   } catch (e) { log("Testi epäonnistui: " + errMsg(e)); }
 }
@@ -1284,7 +1334,7 @@ function reason(o) {
   if (m && m.taskId === "__none") return "poistettu aikataulusta käsin";
   if (!S.tasks.length) return "aikataulua ei ole ladattu";
   if (!o.nimiU) return o.extra ? "objektilla ei ole elementtitietoja" : "ei elementtinimeä";
-  if (!o.osa) return "nimeä \"" + o.nimi + "\" ei ole liitetty rakennusosaan (avainkirja)";
+  if (!o.osa) return "nimi \"" + o.nimi + "\" on avainkirjassa tilassa ei aikataulussa";
   return "ei tehtävää: lohko " + (o.lohko || "?") + ", kerros " + (o.kerros || "?") + ", " + o.osa;
 }
 function setEditEnabled(b) { ["eTask", "eStart", "eEnd", "eActual", "btnSave", "btnInstalled", "btnRevert"].forEach(id => { $(id).disabled = !b; }); }
@@ -1312,17 +1362,18 @@ function showSelection() {
   if (n === 1) {
     const o = selected[0];
     const t = o.taskId ? taskById.get(o.taskId) : null;
-    const row = (k, v) => "<tr><td>" + k + "</td><td>" + esc(v) + "</td></tr>";
+    const row = (k, v, cls) => "<tr><td>" + k + "</td><td" + (cls ? ' class="' + cls + '"' : "") + ">" + esc(v) + "</td></tr>";
     let ssTxt = "–";
     if (o.ssS != null || o.ssC != null) ssTxt = (o.ssS != null ? (S.ss.startVal || "aloitettu") + " " + fmt(o.ssS) : "") + (o.ssS != null && o.ssC != null ? ", " : "") + (o.ssC != null ? (S.ss.doneVal || "valmis") + " " + fmt(o.ssC) : "");
     const e = elemOf(o);
+    const conf = o.mAct != null && o.ssC != null && o.mAct !== o.ssC;
     $("selInfo").innerHTML = '<table class="tbl kv">' +
       row("Nimi", o.nimi || "–") + row("Tyyppi", typeLabel(o)) + row("Lohko / kerros", (o.rawLohko || "–") + " / " + (o.rawKerros || "–")) +
       row("Tunnus", o.tunnus || "–") + row("Rakennusosa", o.osa || "–") +
       row("Tehtävä", t ? taskLabel(t) : "– (" + reason(o) + ")") +
       (o.precast ? row("Elementtiaikataulu", e ? (e.start != null || e.end != null ? fmt(e.start) + " – " + fmt(e.end != null ? e.end : e.start) : "järjestys " + e.order) : "–") : "") +
       row("Aikataulu", o.start != null ? fmt(o.start) + " – " + fmt(o.end) + " (" + o.src + ")" : "–") +
-      row("Toteutunut", o.actual != null ? fmt(o.actual) + " (" + o.actSrc + ")" : "–") +
+      row("Toteutunut", o.actual != null ? fmt(o.actual) + " (" + o.actSrc + ")" + (conf ? " – poikkeaa Status Sharingista" : "") : "–", conf ? "warnTxt" : "") +
       (S.ss && S.ss.data ? row("Status Sharing", ssTxt) : "") + "</table>";
   } else {
     const diff = [];
@@ -1391,6 +1442,12 @@ function revertSelected() {
 function undo() {
   const before = undoStack.pop();
   if (!before) { log("Ei kumottavaa."); return; }
+  if (before.__key) {
+    S.key = before.key; S.keyAuto = before.keyAuto;
+    renderKeyTable();
+    afterEdit("Kumottu avainkirjan muutos.");
+    return;
+  }
   for (const id of Object.keys(before)) { if (before[id]) S.manual[id] = before[id]; else delete S.manual[id]; }
   afterEdit("Kumottu (" + Object.keys(before).length + " objektia).");
 }
@@ -1595,6 +1652,8 @@ $("btnClearAll").onclick = async () => {
   save(); fillTaskSelect(); autoSuggest(); recalc(); renderKeyTable(); render(true); showSelection(); ssToUI();
   log("Työ tyhjennetty.");
 };
+$("btnKeyAccept").onclick = keyAcceptAll;
+$("btnKeyNone").onclick = keyNoneAll;
 $("btnSaveProps").onclick = () => {
   S.props = { lohko: $("pLohko").value.trim(), kerros: $("pKerros").value.trim(), nimi: $("pNimi").value.trim(), tunnus: $("pTunnus").value.trim(),
     tyyppi: $("pTyyppi").value.trim(), precastVal: $("pPrecast").value.trim() };
@@ -1603,14 +1662,14 @@ $("btnSaveProps").onclick = () => {
 $("btnShowProps").onclick = () => showProps();
 $("btnTestColor").onclick = () => testColor();
 $("covBox").addEventListener("toggle", () => renderCoverage());
-$("colorOn").addEventListener("change", () => { offApplied = false; render(true); });
+$("colorOn").addEventListener("change", () => render(true));
 document.querySelectorAll('input[name="vm"]').forEach(r => r.addEventListener("change", () => {
   const p = viewMode() === "play";
   $("playPanel").hidden = !p;
   $("inputPanel").hidden = p;
   playing = false;
   recomputeRange();
-  if (p) setDay(minDay);
+  if (p) { setDay(minDay); $("colorOn").checked = true; }
   render(true);
 }));
 $("unsched").onchange = () => render(true);
@@ -1648,6 +1707,7 @@ let selTimer = null, modelTimer = null;
   setEditEnabled(false);
   fillTaskSelect();
   fillValSelects(null);
+  $("legend").innerHTML = '<div class="muted">Väritys pois – kytke yläreunan "Väritä malli" päälle.</div>';
   if (typeof TrimbleConnectWorkspace === "undefined") {
     $("conn").textContent = "Workspace API ei latautunut";
     log("Workspace API -skriptiä ei saatu ladattua.");

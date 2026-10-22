@@ -53,6 +53,7 @@ input[type=range]{width:100%}
 .tbl tr.warn{background:#fff4cc}
 .tbl select{max-width:150px;font-size:11px}
 .kv td:first-child{color:var(--m);width:34%}
+.warnTxt{color:#dc2626}
 details{margin-top:6px}
 details summary{cursor:pointer;font-weight:600;font-size:12px}
 .scroll{max-height:260px;overflow:auto}
@@ -62,9 +63,9 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.5</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.6</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
-  <label class="switch"><input type="checkbox" id="colorOn" checked><span class="sl"></span></label>
+  <label class="switch"><input type="checkbox" id="colorOn"><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
 </div>
 
@@ -79,6 +80,10 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
   <div id="info" class="info">Ei aikataulua.</div>
   <details id="keyBox"><summary id="keySum">Avainkirja</summary>
     <div class="muted">Mallin elementtinimi → Tocomanin rakennusosa. Kursivoidut ovat automaattisia ehdotuksia.</div>
+    <div class="row">
+      <button id="btnKeyAccept" class="ghost">Hyväksy kaikki ehdotukset</button>
+      <button id="btnKeyNone" class="ghost">Aseta kaikki: ei aikataulussa</button>
+    </div>
     <div id="keyTable" class="scroll"></div>
   </details>
   <details id="covBox"><summary>Kohdistusraportti</summary>
@@ -120,7 +125,8 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
       <select id="colorBy">
         <option value="date">Suunniteltu alku (liukuväri)</option>
         <option value="task">Tehtävittäin</option>
-        <option value="source">Tiedon lähde</option>
+        <option value="source">Aikataulun lähde</option>
+        <option value="actsrc">Toteuman lähde</option>
         <option value="today">Tilanne tänään (toteuma)</option>
       </select>
     </label>
@@ -212,6 +218,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
