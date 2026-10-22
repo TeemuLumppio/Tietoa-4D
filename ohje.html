@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tietoa 4D – käyttöohje</title>
+<style>
+body{margin:0;font:15px/1.55 "Segoe UI",Roboto,Arial,sans-serif;color:#1d2733;background:#f6f7f9}
+main{max-width:900px;margin:0 auto;padding:24px 20px 60px;background:#fff}
+h1{color:#0063a3;margin-top:0}
+h2{color:#0063a3;border-bottom:2px solid #e3e6ea;padding-bottom:4px;margin-top:36px}
+h3{margin-top:24px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px}
+th,td{border:1px solid #e3e6ea;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f1f5f9}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;border:1px solid rgba(0,0,0,.2);vertical-align:middle;margin-right:4px}
+.note{background:#fff4cc;border-left:4px solid #f59e0b;padding:8px 12px;margin:12px 0}
+.tip{background:#eef6fc;border-left:4px solid #0063a3;padding:8px 12px;margin:12px 0}
+nav ol{columns:2}
+code{background:#f1f5f9;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body><main>
+<h1>Tietoa 4D – käyttöohje</h1>
+<p>Tietoa 4D on Trimble Connectin 3D-katselimen laajennus, jolla Tocoman-aikataulu kytketään tietomalliin. Malli voidaan värittää aikataulun mukaan, rakentumista voi toistaa aikajanalla ja toteuma (myös Status Sharing -kirjaukset) näkyy samassa näkymässä suunnitelman rinnalla.</p>
+<p>Ohje koskee versiota 2.7. Laajennus toimii Trimble Connect for Browserissa, ei mobiilisovelluksessa.</p>
+
+<nav><h2>Sisältö</h2><ol>
+<li><a href="#perusreitti">Perusreitti</a></li>
+<li><a href="#kayttoonotto">Käyttöönotto</a></li>
+<li><a href="#lahtotiedot">1. Lähtötiedot</a></li>
+<li><a href="#avainkirja">Avainkirja</a></li>
+<li><a href="#kohdistus">Kohdistusraportti</a></li>
+<li><a href="#asetukset">Asetukset ja kerrosvastaavuus</a></li>
+<li><a href="#nakyma">2. Näkymä ja värit</a></li>
+<li><a href="#valitut">3. Valitut objektit</a></li>
+<li><a href="#ss">4. Toteuma Status Sharingista</a></li>
+<li><a href="#vienti">5. Vienti ja tallennus</a></li>
+<li><a href="#vaihe2">Vaihe 2: elementtiaikataulu</a></li>
+<li><a href="#etusija">Mikä tieto voittaa</a></li>
+<li><a href="#laatu">Laadunvarmistus</a></li>
+<li><a href="#tyonjako">Työnjako ja tiedon jakaminen</a></li>
+<li><a href="#ukk">Usein kysytyt</a></li>
+</ol></nav>
+
+<h2 id="perusreitti">Perusreitti</h2>
+<ol>
+<li><b>Lataa Tocoman-aikataulu</b> (xlsx) kohdassa 1 ja paina <b>Lue malli</b>.</li>
+<li><b>Käy avainkirja läpi:</b> jokaiselle mallin elementtinimelle valitaan Tocomanin rakennusosa tai <i>ei aikatauluteta</i>.</li>
+<li><b>Avaa kohdistusraportti:</b> korjaa keltaiset rivit ja puutelistat.</li>
+<li><b>Korjaa poikkeukset käsin</b> kohdassa 3 (mallin väärät lohkot/kerrokset, erikoistapaukset).</li>
+<li><b>Tarkista malli värityksellä</b> (Suunniteltu alku) ja toistolla.</li>
+<li><b>Tallenna työtiedosto</b> projektikansioon.</li>
+<li>Työmaan edetessä: <b>Hae toteuma</b> Status Sharingista ja seuraa <i>Tilanne tänään</i> -näkymää.</li>
+</ol>
+
+<h2 id="kayttoonotto">Käyttöönotto</h2>
+<p>Projektin ylläpitäjä lisää laajennuksen kerran: <b>Settings → Apps &amp; Capabilities → + Add Custom</b> ja syöttää manifestin osoitteen. Sen jälkeen laajennus näkyy kaikille projektin käyttäjille 3D-katselimen sivupaneelissa.</p>
+<p>Laajennus ei koske malliin, ennen kuin <b>Väritä malli</b> -kytkin laitetaan päälle. Kun kytkin laitetaan pois, malli palaa omiin väreihinsä. Väritys näkyy vain omassa näkymässäsi eikä muuta mallia.</p>
+
+<h2 id="lahtotiedot">1. Lähtötiedot</h2>
+<table>
+<tr><th>Tiedosto</th><th>Mitä tapahtuu</th></tr>
+<tr><td>Tocoman-aikataulu (xlsx/csv)</td><td>Hierarkia puretaan tehtäviksi: lohko tulee Sijainti-sarakkeesta, kerros ylätason rivin nimestä (esim. "1.KRS Runko") ja rakennusosat tehtävän nimestä. Yhdistelmätehtävä "ELEMENTTISEINÄT, PILARIT" jaetaan kahdeksi rakennusosaksi.</td></tr>
+<tr><td>Elementtiaikataulu (csv/xlsx)</td><td>Vaihe 2. Ks. <a href="#vaihe2">Vaihe 2</a>.</td></tr>
+<tr><td>Työtiedosto (.json)</td><td>Avaa aiemmin tallennetun työn kokonaisuudessaan (korvaa nykyisen).</td></tr>
+</table>
+<p><b>Lue malli</b> lukee mallista elementtien kentät (nimi, lohko, kerros, materiaali, tunnus, tyyppi) ja elementtien alaosat. Ison mallin luku kestää hetken; edistyminen näkyy yläreunassa. Lue malli uudelleen aina, kun malliin tulee uusi versio.</p>
+<p>Info-rivi kertoo tilanteen: montako elementtiä on aikataulussa, montako ilman (<i>aikataulu puuttuu</i>), montako on merkitty <i>ei aikatauluteta</i>, betonielementtien määrä sekä käsin korjatut ja asennetut.</p>
+
+<h2 id="avainkirja">Avainkirja</h2>
+<p>Avainkirja kertoo, mihin Tocomanin rakennusosaan kukin mallin elementtinimi kuuluu. Valinta koskee kerralla kaikkia samannimisiä osia koko mallissa. Laajennus etsii sen jälkeen jokaiselle osalle tehtävän, jonka <b>lohko, kerros ja rakennusosa</b> täsmäävät. Jos tehtävällä ei ole kerrosta (esim. ALAPOHJA, PERUSTUKSET), riittää lohko ja rakennusosa.</p>
+<h3>Valinnat</h3>
+<table>
+<tr><th>Valinta</th><th>Merkitys</th><th>Mallissa</th></tr>
+<tr><td>Rakennusosa (esim. ONTELOT)</td><td>Osa saa aikataulun säännön mukaan</td><td>väritetty</td></tr>
+<tr><td><b>— ei valittu —</b></td><td>Päätös puuttuu. Näkyy puutteena kohdistusraportissa.</td><td><span class="sw" style="background:#969696"></span>harmaa (tai magenta)</td></tr>
+<tr><td><b>— ei aikatauluteta —</b></td><td>Tietoisesti pois aikataulusta (esim. eristeet, ei-runko-osat). Ei näy puutteena.</td><td>läpinäkyvä</td></tr>
+</table>
+<div class="tip">Kun kaikki ei-runko-osat on merkitty <i>ei aikatauluteta</i>, harmaa tarkoittaa aina oikeaa puutetta.</div>
+<h3>Materiaali</h3>
+<p>Jos samalla nimellä on mallissa eri materiaaleja (esim. PILARI teräksenä ja betonina), avainkirjaan tulee rivi kullekin: <code>PILARI · STEEL</code> ja <code>PILARI · CONCRETE</code>. Jos riville ei ole tehty omaa valintaa, se käyttää nimen aiemman valinnan ("nimen mukaan"). Materiaali luetaan kentästä <i>Elementin pääosan materiaalin tyyppi</i>.</p>
+<h3>Merkinnät</h3>
+<ul>
+<li><b>Kursiivi</b> = laajennuksen automaattinen ehdotus. Ehdotukset perustuvat avainsanasääntöihin (esim. nimessä SEINÄ + ELEMENTTI → ELEMENTTISEINÄT) ja kirjainten samankaltaisuuteen. Teräsmateriaalille ehdotetaan teräsrakennetta, jos Tocomanissa on sellainen. Ehdotus lukittuu, kun valitset itse tai painat <i>Hyväksy kaikki ehdotukset</i>.</li>
+<li><b>★</b> = nimellä on betonielementtejä tai teräsosia, eli se kuuluu todennäköisesti runkoon. Tarkista nämä ensin.</li>
+<li>Luku suluissa = montako osaa mallissa on tällä nimellä.</li>
+</ul>
+<h3>Painikkeet</h3>
+<table>
+<tr><th>Painike</th><th>Toiminto</th></tr>
+<tr><td>Näytä-suodatin</td><td>Näyttää vain esim. <i>ei valittu</i> -rivit tai ehdotukset.</td></tr>
+<tr><td>Hyväksy kaikki ehdotukset</td><td>Lukitsee kursivoidut ehdotukset.</td></tr>
+<tr><td>Valitsemattomat → ei aikatauluteta</td><td>Merkitsee kaikki <i>ei valittu</i> -rivit pois aikataulusta. Varoittaa, jos joukossa on ★-rivejä. Käytä vasta, kun runko-osat on liitetty.</td></tr>
+<tr><td>Aseta kaikki: ei valittu</td><td>Tyhjentää avainkirjan (aloitus puhtaalta pöydältä).</td></tr>
+</table>
+<p>Kaikki avainkirjan muutokset voi kumota kohdan 3 <b>Kumoa</b>-painikkeella.</p>
+
+<h2 id="kohdistus">Kohdistusraportti</h2>
+<p>Ensimmäinen taulukko listaa Tocoman-tehtävät: montako osaa mallista kohdistui tehtävään (Malli) ja mikä on Tocomanin määrä (Toc.).</p>
+<table>
+<tr><th>Rivi</th><th>Merkitys</th></tr>
+<tr><td>Vihreä luku</td><td>Yksikkö kpl ja määrät täsmäävät.</td></tr>
+<tr><td style="background:#fff4cc">Keltainen</td><td>Yksikkö kpl ja määrät eroavat, <b>tai tehtävään ei ole kohdistunut yhtään osaa</b> (millä tahansa yksiköllä).</td></tr>
+<tr><td>Valkoinen</td><td>Yksikkö on jm/m²/m³, joten kappalemäärää ei voi verrata. Tarkista silmämääräisesti.</td></tr>
+</table>
+<p>Klikkaamalla riviä tehtävän osat valitaan mallista.</p>
+<h3>Puutelistat</h3>
+<table>
+<tr><th>Lista</th><th>Merkitys ja korjaus</th></tr>
+<tr><td>Rakennusosa valittu, mutta lohko/kerros ei osu yhteenkään tehtävään</td><td>Esim. <code>D / 0 / SOKKELIT 12</code>: lohkossa D on 12 sokkeliksi tunnistettua osaa, joiden kerros on 0, mutta Tocomanissa ei ole lohkon D sokkelitehtävää kerrokselle 0. Korjaus: tarkista Tocoman, aseta <a href="#asetukset">kerrosvastaavuus</a> (esim. 0=K) tai liitä osat käsin kohdassa 3.</td></tr>
+<tr><td>Ei valittu avainkirjassa</td><td>Nimet, joille ei ole valittu rakennusosaa eikä <i>ei aikatauluteta</i>. ★-rivit ensin. Klikkaus valitsee osat mallista.</td></tr>
+</table>
+<p>Raportin alaosassa näkyy, montako osaa on merkitty <i>ei aikatauluteta</i> ja montako on päivätty käsin ilman tehtävää. Käsin tehtävään liitetyt osat näkyvät tehtävän rivillä.</p>
+
+<h2 id="asetukset">Asetukset ja kerrosvastaavuus</h2>
+<table>
+<tr><th>Kenttä</th><th>Oletus</th></tr>
+<tr><td>Lohko / Kerros / Nimi</td><td>Elementin lohko / Elementin kerros / Elementin nimi</td></tr>
+<tr><td>Materiaali</td><td>Elementin pääosan materiaalin tyyppi</td></tr>
+<tr><td>Elementtitunnus</td><td>Elementin piirustusnumero</td></tr>
+<tr><td>Tyyppi / Betonielementin arvo</td><td>Elementin tyyppi / Precast</td></tr>
+</table>
+<p>Jos kenttien nimet ovat toisessa hankkeessa erilaiset, valitse osa ja paina <b>Näytä valitun ominaisuudet</b>: kenttien nimet näkyvät kohdan 5 tekstikentässä. Kirjoita oikea nimi ja paina <b>Tallenna ja lue malli</b>.</p>
+<h3>Kerrosvastaavuus</h3>
+<p>Käytetään, jos mallin ja aikataulun kerrosmerkinnät eroavat, esim. malli <code>0.KRS</code> ja Tocoman <code>K. KRS</code>. Kirjoitus muodossa <code>0=K</code>, useampi pari puolipisteellä: <code>0=K; 00=K</code>. Muutos tulee voimaan heti. Parhaimmillaan tätä ei tarvita, kun aikataulu laaditaan mallin kerrosjaon mukaan.</p>
+
+<h2 id="nakyma">2. Näkymä ja värit</h2>
+<h3>Syöttö</h3>
+<p>Aikataulun laadintaan ja tarkistukseen. Mitään ei piiloteta automaattisesti.</p>
+<p><b>Aikataulu puuttuu:</b> harmaa, magenta (korostus), läpinäkyvä tai piilota. <i>Ei aikatauluteta</i> -osat näkyvät aina läpinäkyvinä (tai piilossa, jos valittu Piilota).</p>
+<table>
+<tr><th>Väritys</th><th>Mitä näyttää</th></tr>
+<tr><td>Suunniteltu alku (liukuväri)</td><td>Sininen = aikaisin, punainen = myöhäisin. Asennusjärjestyksen virheet erottuvat (esim. ylempi kerros sinisempi kuin alempi).</td></tr>
+<tr><td>Tehtävittäin</td><td>Jokainen Tocoman-tehtävä omalla värillään. Näyttää, kohdistuiko sääntö oikeisiin osiin.</td></tr>
+<tr><td>Aikataulun lähde</td><td><span class="sw" style="background:#2563eb"></span>Tocoman-sääntö <span class="sw" style="background:#0d9488"></span>elementtiaikataulu <span class="sw" style="background:#ea580c"></span>käsin annettu</td></tr>
+<tr><td>Toteuman lähde</td><td><span class="sw" style="background:#16a34a"></span>Status Sharing valmis <span class="sw" style="background:#f59e0b"></span>Status Sharing työn alla <span class="sw" style="background:#2563eb"></span>käsin kirjattu <span class="sw" style="background:#0ea5e9"></span>elementtiaikataulu <span class="sw" style="background:#dc2626"></span>käsin, poikkeaa Status Sharingista <span class="sw" style="background:#c8c8c8"></span>aikataulussa, ei toteumaa</td></tr>
+<tr><td>Tilanne tänään</td><td>Ks. taulukko alla.</td></tr>
+</table>
+<h3>Tilavärit (Tilanne tänään ja toiston vertailu)</h3>
+<table>
+<tr><th>Väri</th><th>Tila</th><th>Ehto</th></tr>
+<tr><td><span class="sw" style="background:#16a34a"></span>Vihreä</td><td>Valmis</td><td>Toteutunut päivä kirjattu</td></tr>
+<tr><td><span class="sw" style="background:#f59e0b"></span>Oranssi</td><td>Työn alla</td><td>Suunniteltu käynnissä tai aloitus kirjattu</td></tr>
+<tr><td><span class="sw" style="background:#dc2626"></span>Punainen</td><td>Myöhässä</td><td>Aloitus kirjattu, valmistumista ei, ja suunniteltu loppu ohi</td></tr>
+<tr><td><span class="sw" style="background:#8b5cf6"></span>Violetti</td><td>Ei kirjausta</td><td>Suunniteltu loppu ohi, eikä toteumasta ole mitään tietoa. Tarkista työmaalta.</td></tr>
+<tr><td><span class="sw" style="background:#7dafe1"></span>Vaaleansininen</td><td>Tulossa</td><td>Suunniteltu alku tulevaisuudessa</td></tr>
+</table>
+<h3>Toisto (aikajana)</h3>
+<p>Rakentuminen tai suunniteltu vs. toteutunut. Toistoon siirtyminen kytkee värityksen päälle.</p>
+<ul>
+<li><b>Ilman aikataulua: Piilota</b> = animaatio alkaa tyhjästä.</li>
+<li><b>Seuraava muutos</b> pysähtyy jokaiseen päivään, jolloin jokin alkaa, valmistuu tai kirjataan. 1 pv / 1 vk etenevät tasaisesti.</li>
+<li>Tehtävä on oranssi loppupäivään asti ja vihreä seuraavasta päivästä.</li>
+</ul>
+
+<h2 id="valitut">3. Valitut objektit</h2>
+<p>Valitse osat mallista (klikkaus, Ctrl-klikkaus, aluevalinta). Alaosan valinta valitsee koko elementin.</p>
+<p>Yhden osan valinnassa näkyvät nimi, materiaali, tyyppi, lohko/kerros, tunnus, rakennusosa, tehtävä, aikataulu ja toteuma lähteineen sekä <b>syy</b>, jos aikataulua ei ole.</p>
+<table>
+<tr><th>Toiminto</th><th>Selitys</th></tr>
+<tr><td>Valitse samanlaiset</td><td>Valitsee osat, joilla on sama nimi (ja materiaali) kuin valituilla. Rajaus: sama lohko ja kerros / sama lohko / koko malli.</td></tr>
+<tr><td>Tehtävä / Alku / Loppu / Toteutunut</td><td>Muuta haluamasi kentät (oranssi reunus) ja paina <b>Tallenna muutokset</b>. Vain muutetut kentät tallentuvat.</td></tr>
+<tr><td>Tehtävä: Ei aikataulua (poista)</td><td>Poistaa valitut osat aikataulusta avainkirjasta riippumatta.</td></tr>
+<tr><td>✓ Asennettu</td><td>Kirjaa toteutuneeksi Toteutunut-kentän päivän, tai tämän päivän.</td></tr>
+<tr><td>Palauta sääntöön</td><td>Poistaa valittujen osien käsin tehdyt korjaukset.</td></tr>
+<tr><td>Kumoa</td><td>Kumoaa viimeisimmän muutoksen (myös avainkirjan). Toimii saman istunnon aikana.</td></tr>
+<tr><td>Valitse aikataulutta olevat</td><td>Valitsee osat, joilla aikataulu puuttuu (ei <i>ei aikatauluteta</i> -osia).</td></tr>
+</table>
+<div class="tip"><b>Avainkirjasääntö käsin liitoksesta:</b> kun annat tehtävän osille, joiden nimi on avainkirjassa <i>ei valittu</i>, laajennus kysyy, lisätäänkö avainkirjaan sääntö. Hyväksymällä myös muut samannimiset osat saavat aikataulun oman lohkonsa ja kerroksensa mukaan.</div>
+<p>Käsin annettu arvo ohittaa säännön, elementtiaikataulun ja Status Sharingin, ja säilyy, kun Tocoman päivitetään.</p>
+
+<h2 id="ss">4. Toteuma Status Sharingista</h2>
+<ol>
+<li>Tarkista <b>Alue</b> (Eurooppa) ja paina <b>Yhdistä</b>. Hyväksy Trimble Connectin lupapyyntö kirjautumistietojen käyttöön.</li>
+<li>Valitse <b>Action</b> (esim. Asennus) sekä tilat: <i>Työn alla = Started</i>, <i>Valmis = Completed</i>.</li>
+<li>Paina <b>Hae toteuma</b>, tai valitse automaattihaku 5 min välein (toimii, kun paneeli on auki).</li>
+</ol>
+<table>
+<tr><th>Viimeisin tila Status Sharingissa</th><th>Laajennuksessa</th></tr>
+<tr><td>Completed</td><td>Valmis Completed-päivästä alkaen</td></tr>
+<tr><td>Started tai Paused</td><td>Työn alla ensimmäisestä Started-päivästä alkaen</td></tr>
+<tr><td>Palautettu tilaan None</td><td>Ei toteumaa</td></tr>
+</table>
+<p>Laajennus vain lukee Status Sharingia. Näkyvissä ovat oman organisaation ja julkiset actionit.</p>
+<div class="note">Kirjatkaa toteumat Status Sharingiin oikeilla päivillä. Testivaiheen vuoden 2009 kirjaukset kannattaa palauttaa tilaan None, muuten ne venyttävät aikajanaa.</div>
+
+<h2 id="vienti">5. Vienti ja tallennus</h2>
+<table>
+<tr><th>Painike</th><th>Tulos</th></tr>
+<tr><td>Aikataulu CSV</td><td>Kaikki osat: GUID, tunnus, nimi, materiaali, lohko, kerros, rakennusosa, tehtävä, suunnitellut päivät, toteuma ja lähteet. Avautuu Excelissä.</td></tr>
+<tr><td>Elementtipohja (vaihe 2)</td><td>Betonielementit tunnuksineen ja tehtävän päivineen täytettäväksi.</td></tr>
+<tr><td>Tallenna työtiedosto</td><td>Koko työ (.json): aikataulu, avainkirja, käsin korjaukset, elementtiaikataulu, Status Sharing -asetukset.</td></tr>
+</table>
+<div class="note">Työ tallentuu automaattisesti vain omaan selaimeesi. Tallenna työtiedosto projektikansioon aina muutosten jälkeen.</div>
+
+<h2 id="vaihe2">Vaihe 2: elementtiaikataulu</h2>
+<p>Koskee vain betonielementtejä (<i>Elementin tyyppi</i> sisältää "Precast"). Paikallavalut (anturat, sokkelit) seuraavat aina vaiheen 1 tehtävää.</p>
+<ol>
+<li>Vie <b>Elementtipohja</b>.</li>
+<li>Täytä joko <b>Järjestys</b> (laajennus jakaa elementit tasaisesti tehtävän arkipäiville) tai <b>Alku/Loppu</b>. Toteutunut-sarake on vapaaehtoinen.</li>
+<li>Tuo tiedosto kohdassa 1. Loki kertoo, montako riviä kohdistui.</li>
+</ol>
+<p>Tunnisteena on elementtitunnus (<i>Elementin piirustusnumero</i>). Listan tunnusten pitää vastata mallia täsmälleen. Samalla tunnuksella olevat elementit saavat saman päivän.</p>
+
+<h2 id="etusija">Mikä tieto voittaa</h2>
+<table>
+<tr><th>Tieto</th><th>Etusijajärjestys</th></tr>
+<tr><td>Aikataulu</td><td>1. käsin annettu → 2. elementtiaikataulu (betonielementit) → 3. Tocoman-sääntö (avainkirja + lohko + kerros)</td></tr>
+<tr><td>Toteuma</td><td>1. käsin kirjattu → 2. Status Sharing → 3. elementtiaikataulun Toteutunut-sarake</td></tr>
+</table>
+
+<h2 id="laatu">Laadunvarmistus</h2>
+<ol>
+<li>Avainkirja: suodatin <b>Ei valittu</b> → käy ★-rivit läpi ja liitä ne rakennusosaan.</li>
+<li>Merkitse loput (ei-runko-osat) <b>ei aikatauluteta</b>.</li>
+<li>Kohdistusraportti: puutelistojen pitäisi olla tyhjiä. Keltaiset tehtävärivit tarkistetaan klikkaamalla.</li>
+<li>Väritys <b>Suunniteltu alku</b>, aikataulu puuttuu = <b>magenta</b>: jokainen magentaosa on todellinen puute.</li>
+<li>Toisto: rakentuuko runko järkevässä järjestyksessä?</li>
+<li>Käsin korjatut osat (Aikataulun lähde → oranssi) kannattaa raportoida suunnittelijalle mallivirheinä.</li>
+</ol>
+
+<h2 id="tyonjako">Työnjako ja tiedon jakaminen</h2>
+<ul>
+<li>Sovitaan <b>yksi vastuuhenkilö</b>, joka ylläpitää työtä.</li>
+<li>Vastuuhenkilö tallentaa työtiedoston projektikansioon sovitulla nimellä ja päiväyksellä muutosten jälkeen.</li>
+<li>Muut avaavat uusimman työtiedoston ennen katselua. Rinnakkaiset muokkaukset ylikirjoittavat toisensa.</li>
+<li>Käsin tehdyt korjaukset on sidottu objektin GUIDiin. Jos osa mallinnetaan uudelleen ja GUID vaihtuu, korjaus irtoaa (loki ilmoittaa).</li>
+<li>Tocoman-tehtävät tunnistetaan WBS-numerolla. Jos numerointi muuttuu, käsin valitut tehtävät palaavat sääntöön.</li>
+</ul>
+
+<h2 id="ukk">Usein kysytyt</h2>
+<table>
+<tr><th>Kysymys</th><th>Vastaus</th></tr>
+<tr><td>Malli ei värity.</td><td>Kytke yläreunan <b>Väritä malli</b> päälle.</td></tr>
+<tr><td>Miksi osa on harmaa?</td><td>Valitse osa, kohta 3 kertoo syyn.</td></tr>
+<tr><td>Mallissa on väärä lohko tai kerros.</td><td>Liitä osa käsin oikeaan tehtävään kohdassa 3. Mallia ei tarvitse korjata.</td></tr>
+<tr><td>Tocoman päivittyi.</td><td>Lataa uusi xlsx. Avainkirja ja käsin korjaukset säilyvät.</td></tr>
+<tr><td>Malli päivittyi.</td><td>Paina <b>Lue malli</b> ja tarkista avainkirjan uudet ehdotukset.</td></tr>
+<tr><td>Asentaja kirjasi, mutta mitään ei näy.</td><td>Paina <b>Hae toteuma</b> ja tarkista, että oikea action on valittuna.</td></tr>
+<tr><td>Toisen yrityksen actionit eivät näy.</td><td>Action pitää merkitä Status Sharingissa julkiseksi.</td></tr>
+<tr><td>Näkyykö väritykseni muille?</td><td>Ei. Jaa työ työtiedostolla.</td></tr>
+<tr><td>Toimiiko puhelimessa?</td><td>Ei. Asentajat kirjaavat Status Sharingiin mobiilissa.</td></tr>
+<tr><td>Jokin ei toimi.</td><td>Avaa paneelin alaosan <b>Loki</b> ja lähetä sen sisältö ylläpitäjälle.</td></tr>
+</table>
+</main></body></html>

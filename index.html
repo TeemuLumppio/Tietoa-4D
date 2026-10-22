@@ -12,7 +12,8 @@
 body{margin:0;font:13px/1.4 "Segoe UI",Roboto,Arial,sans-serif;color:var(--t);background:var(--bg)}
 header{background:var(--b);color:#fff;padding:10px 12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
 header small{font-weight:400;opacity:.8}
-.pill{font-size:11px;font-weight:400;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header a{color:#fff;font-weight:400;font-size:12px}
+.pill{font-size:11px;font-weight:400;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-bottom:1px solid #e3e6ea}
 .switch{position:relative;display:inline-block;width:38px;height:20px;margin:0}
 .switch input{opacity:0;width:0;height:0}
@@ -54,6 +55,7 @@ input[type=range]{width:100%}
 .tbl select{max-width:150px;font-size:11px}
 .kv td:first-child{color:var(--m);width:34%}
 .warnTxt{color:#dc2626}
+.star{color:#b45309;font-weight:700}
 details{margin-top:6px}
 details summary{cursor:pointer;font-weight:600;font-size:12px}
 .scroll{max-height:260px;overflow:auto}
@@ -63,7 +65,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.6</small></span><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.7</small></span><a href="ohje.html" target="_blank" rel="noopener">Ohje</a><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn"><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -79,10 +81,20 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
   </div>
   <div id="info" class="info">Ei aikataulua.</div>
   <details id="keyBox"><summary id="keySum">Avainkirja</summary>
-    <div class="muted">Mallin elementtinimi → Tocomanin rakennusosa. Kursivoidut ovat automaattisia ehdotuksia.</div>
+    <div class="muted">Mallin elementtinimi → Tocomanin rakennusosa. Kursivoidut ovat automaattisia ehdotuksia. ★ = nimellä on betonielementtejä tai teräsosia (todennäköisesti runkoa).</div>
+    <label>Näytä
+      <select id="keyFilter">
+        <option value="all">Kaikki</option>
+        <option value="none">Ei valittu</option>
+        <option value="auto">Ehdotukset (kursivoidut)</option>
+        <option value="skip">Ei aikatauluteta</option>
+        <option value="set">Liitetyt rakennusosaan</option>
+      </select>
+    </label>
     <div class="row">
       <button id="btnKeyAccept" class="ghost">Hyväksy kaikki ehdotukset</button>
-      <button id="btnKeyNone" class="ghost">Aseta kaikki: ei aikataulussa</button>
+      <button id="btnKeySkipRest" class="ghost">Valitsemattomat → ei aikatauluteta</button>
+      <button id="btnKeyNone" class="ghost">Aseta kaikki: ei valittu</button>
     </div>
     <div id="keyTable" class="scroll"></div>
   </details>
@@ -94,15 +106,19 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <label>Lohko <input type="text" id="pLohko"></label>
     <label>Kerros <input type="text" id="pKerros"></label>
     <label>Nimi <input type="text" id="pNimi"></label>
+    <label>Materiaali <input type="text" id="pMat"></label>
     <label>Elementtitunnus <input type="text" id="pTunnus"></label>
     <label>Tyyppi <input type="text" id="pTyyppi"></label>
     <label>Betonielementin arvo <input type="text" id="pPrecast"></label>
-    <div class="muted">Elementtikohtainen aikataulu (vaihe 2) koskee vain objekteja, joiden tyyppi sisältää tämän arvon. Tyhjä = kaikki.</div>
+    <div class="muted">Elementtikohtainen aikataulu (vaihe 2) koskee vain objekteja, joiden tyyppi sisältää tämän arvon. Tyhjä = kaikki. Materiaali erottelee avainkirjassa saman nimen osat (esim. teräs- ja betonipilarit).</div>
     <div class="row">
       <button id="btnSaveProps" class="ghost">Tallenna ja lue malli</button>
       <button id="btnShowProps" class="ghost">Näytä valitun ominaisuudet</button>
       <button id="btnTestColor" class="ghost">Testaa väritys valitulle</button>
     </div>
+    <h3>Kerrosvastaavuus</h3>
+    <label>Malli = Tocoman <input type="text" id="pKerMap" placeholder="esim. 0=K; 00=K"></label>
+    <div class="muted">Käytä, jos mallin ja aikataulun kerrosmerkinnät eroavat. Erota parit puolipisteellä. Muutos tulee voimaan heti.</div>
   </details>
 </section>
 
@@ -113,7 +129,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <label><input type="radio" name="vm" value="play"> Toisto (aikajana)</label>
   </div>
   <div id="inputPanel">
-    <label>Ilman aikataulua
+    <label>Aikataulu puuttuu
       <select id="unsched">
         <option value="grey">Harmaa</option>
         <option value="magenta">Korosta (magenta)</option>
@@ -166,6 +182,14 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 <section>
   <h2>3. Valitut objektit</h2>
   <div id="selInfo" class="muted">Valitse objekteja mallista.</div>
+  <div class="row">
+    <button id="btnSimilar" class="ghost">Valitse samanlaiset</button>
+    <select id="simScope">
+      <option value="kerros" selected>sama lohko ja kerros</option>
+      <option value="lohko">sama lohko</option>
+      <option value="all">koko malli</option>
+    </select>
+  </div>
   <label>Tehtävä <select id="eTask"></select></label>
   <label>Alku <input type="date" id="eStart"></label>
   <label>Loppu <input type="date" id="eEnd"></label>
@@ -218,6 +242,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
