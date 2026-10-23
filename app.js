@@ -1,7 +1,7 @@
 "use strict";
-/* Tietoa 4D v2.7 – Trimble Connect 3D Viewer -laajennus
-   v2.7: avainkirjaan "ei aikatauluteta" / "ei valittu", materiaali erottelee saman nimen osat,
-   kerrosvastaavuus, "valitse samanlaiset", käsin liitoksesta avainkirjasääntö, tarkempi kohdistusraportti. */
+/* Tietoa 4D v2.8 – Trimble Connect 3D Viewer -laajennus
+   v2.8: yksinkertainen aikataulumuoto (ilman Hier-saraketta, Kerros/Lohko-sarakkeet),
+   toiston "Rakentamattomat osat" -asetus koskee myös tulevia aikataulutettuja osia. */
 
 const IFC_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
 const DAY = 86400000;
@@ -137,32 +137,46 @@ function normLohko(s) {
 }
 function isSteel(mat) { return /STEEL|TERÄS|TERAS/.test(up(mat)); }
 
-/* ---- Tocoman-aikataulun purku ---- */
+/* ---- Aikataulun purku: Tocoman-vienti (Hier) tai yksinkertainen taulukko ---- */
+let lastParseMode = "";
 function parseTocoman(rows) {
   let hi = -1;
   const col = {};
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const h = (rows[i] || []).map(up);
-    if (h.indexOf("NIMI") >= 0 && h.indexOf("ALKU") >= 0) {
+    const hasName = h.indexOf("NIMI") >= 0 || h.indexOf("TEHTÄVÄ") >= 0;
+    if (hasName && h.indexOf("ALKU") >= 0) {
       hi = i;
       h.forEach((v, j) => { if (v && col[v] == null) col[v] = j; });
       break;
     }
   }
   if (hi < 0) return null;
+  const nameKey = col["NIMI"] != null ? "NIMI" : "TEHTÄVÄ";
   const g = (r, k) => (col[k] != null && col[k] < r.length) ? r[col[k]] : null;
   const recs = [];
   for (let i = hi + 1; i < rows.length; i++) {
     const r = rows[i] || [];
-    const name = g(r, "NIMI");
+    const name = g(r, nameKey);
     if (name == null || String(name).trim() === "") continue;
     const wr = g(r, "HIER");
+    const qv = g(r, "MÄÄRÄ");
+    const qn = typeof qv === "number" ? qv : parseFloat(String(qv == null ? "" : qv).replace(",", "."));
+    const ker = g(r, "KERROS"), loh = g(r, "LOHKO");
     recs.push({
       row: g(r, "RIVI"), wbs: wr == null ? "" : String(wr).replace(/[="'\s]/g, ""),
       name: String(name).trim(), start: parseDate(g(r, "ALKU")), end: parseDate(g(r, "LOPPU")),
-      qty: g(r, "MÄÄRÄ"), unit: String(g(r, "YKS") || "").trim(), sij: String(g(r, "SIJAINTI") || "").trim()
+      qty: isNaN(qn) ? null : qn, unit: String(g(r, "YKS") || "").trim(), sij: String(g(r, "SIJAINTI") || "").trim(),
+      ker: (ker == null || String(ker).trim() === "") ? "" : normKerros(ker),
+      loh: (loh == null || String(loh).trim() === "") ? "" : normLohko(loh)
     });
   }
+  if (!recs.some(r => r.wbs)) {
+    if (["TUNNUS", "ELEMENTTITUNNUS", "GUID", "PIIRUSTUSNUMERO", "ELEMENTIN PIIRUSTUSNUMERO", "JÄRJESTYS"].some(k => col[k] != null)) return null;
+    lastParseMode = "yksinkertainen";
+    return parseSimple(recs);
+  }
+  lastParseMode = "Tocoman";
   const byW = new Map(), hasChild = new Set();
   for (const r of recs) if (r.wbs) byW.set(r.wbs, r);
   for (const r of recs) if (r.wbs.indexOf(".") > 0) hasChild.add(r.wbs.slice(0, r.wbs.lastIndexOf(".")));
@@ -171,7 +185,7 @@ function parseTocoman(rows) {
   for (const r of recs) {
     if (!r.wbs || hasChild.has(r.wbs) || r.start == null) continue;
     if (r.wbs.split(".").length < 2) continue;
-    let lohko = r.sij ? normLohko(r.sij) : "", kerros = "";
+    let lohko = r.loh || (r.sij ? normLohko(r.sij) : ""), kerros = r.ker;
     const p = parentOf(r);
     let a = p;
     while (a) {
@@ -180,10 +194,36 @@ function parseTocoman(rows) {
       a = parentOf(a);
     }
     const vaihe = (p && !kerros && !/LOHKO/i.test(p.name)) ? p.name : "";
-    const qn = typeof r.qty === "number" ? r.qty : parseFloat(String(r.qty == null ? "" : r.qty).replace(",", "."));
     tasks.push({
       id: "W" + r.wbs, wbs: r.wbs, row: r.row, lohko, kerros, vaihe, name: r.name, comps: splitComps(r.name),
-      start: r.start, end: r.end != null ? r.end : r.start, qty: isNaN(qn) ? null : qn, unit: r.unit
+      start: r.start, end: r.end != null ? r.end : r.start, qty: r.qty, unit: r.unit
+    });
+  }
+  return tasks;
+}
+/* Yksinkertainen muoto: rivi ilman alkupäivää = otsikko (kerros nimestä, esim. "1. KRS", tai lohko "Lohko A"),
+   rivi päivämäärällä = tehtävä. Kerros- ja Lohko-sarakkeet ohittavat otsikon. Tunnus muodostetaan nimestä,
+   jotta käsin valitut tehtävät säilyvät, vaikka rivejä lisätään. */
+function parseSimple(recs) {
+  const tasks = [], seen = new Map();
+  let kerros = "", lohko = "", vaihe = "";
+  for (const r of recs) {
+    if (r.start == null) {
+      const k = kerrosOfName(r.name);
+      if (/LOHKO/i.test(r.name)) { lohko = normLohko(r.name); kerros = ""; vaihe = ""; }
+      else if (k) { kerros = k; vaihe = ""; }
+      else { kerros = ""; vaihe = r.name; }
+      continue;
+    }
+    const tk = r.ker || kerros;
+    const tl = r.loh || (r.sij ? normLohko(r.sij) : lohko);
+    let id = "N|" + tl + "|" + tk + "|" + up(r.name);
+    const c = seen.get(id) || 0;
+    seen.set(id, c + 1);
+    if (c) id += "#" + (c + 1);
+    tasks.push({
+      id, wbs: String(tasks.length + 1).padStart(5, "0"), row: r.row, lohko: tl, kerros: tk, vaihe: tk ? "" : vaihe,
+      name: r.name, comps: splitComps(r.name), start: r.start, end: r.end != null ? r.end : r.start, qty: r.qty, unit: r.unit
     });
   }
   return tasks;
@@ -251,7 +291,7 @@ const allIds = new Map();
 let hierType;
 let othersLeaf = null;
 let taskById = new Map(), tasksByLohko = new Map(), orderDay = new Map(), kerMapC = new Map();
-const keyRows = new Map();   // avainkirjan rivi -> {base, mat, count, star}
+const keyRows = new Map();
 let selected = [];
 const undoStack = [];
 let modelRead = false, autoReadTried = false;
@@ -335,7 +375,6 @@ function makeObj(modelId, rid, hex, fields) {
 }
 function elemOf(o) { return (o.precast && o.tunnusKey) ? (S.elem[o.tunnusKey] || null) : null; }
 
-/* Avainkirjan rivit: nimi, tai nimi · materiaali kun samalla nimellä on useita materiaaleja */
 function buildKeyRows() {
   keyRows.clear();
   const mats = new Map();
@@ -558,11 +597,11 @@ function autoSuggest() {
   if (changed) save();
 }
 function sortedTasks() {
-  return S.tasks.slice().sort((a, b) => (a.lohko || "").localeCompare(b.lohko || "", "fi") || (a.start - b.start) || a.wbs.localeCompare(b.wbs));
+  return S.tasks.slice().sort((a, b) => (a.lohko || "").localeCompare(b.lohko || "", "fi") || (a.start - b.start) || String(a.wbs).localeCompare(String(b.wbs)));
 }
 function buildKerMap() {
   kerMapC = new Map();
-  String(S.props.kerMap || "").split(/[;,\n]/).forEach(p => {
+  String(S.props.kerMap || "").split(/[;\n]/).forEach(p => {
     const m = p.split("=");
     if (m.length !== 2) return;
     const a = normKerros(m[0]), b = normKerros(m[1]);
@@ -1033,7 +1072,7 @@ function renderCoverage() {
     if (o.osa) { const k = (o.lohko || "?") + " / " + (o.kerT || "?") + " / " + o.osa; noTask.set(k, (noTask.get(k) || 0) + 1); }
     else if (o.km) { noKey.set(o.km, (noKey.get(o.km) || 0) + 1); if (o.precast || isSteel(o.matU)) star.add(o.km); }
   }
-  let h = '<table class="tbl"><tr><th>Tehtävä</th><th>Malli</th><th>Toc.</th></tr>';
+  let h = '<table class="tbl"><tr><th>Tehtävä</th><th>Malli</th><th>Aik.</th></tr>';
   for (const t of sortedTasks()) {
     const m = cnt.get(t.id) || 0;
     const q = /kpl/i.test(t.unit) ? t.qty : null;
@@ -1046,7 +1085,7 @@ function renderCoverage() {
     .sort((a, b) => ((stars && stars.has(b[0]) ? 1 : 0) - (stars && stars.has(a[0]) ? 1 : 0)) || (b[1] - a[1]))
     .map(e => "<tr " + attr + '="' + esc(e[0]) + '"><td>' + (stars && stars.has(e[0]) ? '<span class="star">★</span> ' : "") + esc(e[0]) + "</td><td>" + e[1] + "</td></tr>").join("") + "</table>";
   if (noTask.size) h += "<h3>Rakennusosa valittu, mutta lohko/kerros ei osu yhteenkään tehtävään (lohko / kerros / osa)</h3>" +
-    '<div class="muted">Tarkista Tocomanin tehtävät tai kerrosvastaavuus (Asetukset), tai liitä osat käsin kohdassa 3.</div>' + tbl(noTask, "data-nt");
+    '<div class="muted">Tarkista aikataulun tehtävät tai kerrosvastaavuus (Asetukset), tai liitä osat käsin kohdassa 3.</div>' + tbl(noTask, "data-nt");
   if (noKey.size) h += "<h3>Ei valittu avainkirjassa</h3>" +
     '<div class="muted">Valitse rakennusosa tai \"ei aikatauluteta\". ★ = betonielementtejä tai teräsosia, todennäköisesti runkoa.</div>' + tbl(noKey, "data-nk", star);
   if (!noTask.size && !noKey.size) h += '<div class="info">Kaikilla osilla on aikataulu tai ne on merkitty \"ei aikatauluteta\".</div>';
@@ -1111,6 +1150,7 @@ function unschedCss() {
   const v = unschedValue();
   return v === "magenta" ? rgbCss(C.magenta) : v === "ghost" ? "rgba(200,200,200,.35)" : v === "hide" ? "transparent" : rgbCss(C.grey);
 }
+function bgText() { const v = unschedValue(); return v === "hide" ? "piilossa" : v === "ghost" ? "läpinäkyvä" : v === "magenta" ? "magenta" : "harmaa"; }
 async function setAll(style) {
   try { await API.viewer.setObjectState(undefined, style); }
   catch (e) { await API.viewer.setObjectState({}, style); }
@@ -1148,10 +1188,11 @@ async function applyBase() {
   await applyGroups(groups);
 }
 function sw(col, label, n) { return '<div><span class="sw" style="background:' + rgbCss(col) + '"></span>' + label + ": <b>" + (n || 0) + "</b></div>"; }
+function swCss(css, label, n) { return '<div><span class="sw" style="background:' + css + '"></span>' + label + ": <b>" + (n || 0) + "</b></div>"; }
 function noneRow(n, skp) {
   const hidden = unschedValue() === "hide";
-  return '<div><span class="sw" style="background:' + unschedCss() + '"></span>Aikataulu puuttuu' + (hidden ? " (piilossa)" : "") + ": <b>" + (n || 0) + "</b></div>" +
-    (skp != null ? '<div><span class="sw" style="background:' + (hidden ? "transparent" : "rgba(200,200,200,.35)") + '"></span>Ei aikatauluteta' + (hidden ? " (piilossa)" : " (läpinäkyvä)") + ": <b>" + skp + "</b></div>" : "");
+  return swCss(unschedCss(), "Aikataulu puuttuu (" + bgText() + ")", n) +
+    (skp != null ? swCss(hidden ? "transparent" : "rgba(200,200,200,.35)", "Ei aikatauluteta (" + (hidden ? "piilossa" : "läpinäkyvä") + ")", skp) : "");
 }
 function todayState(o, today) {
   if (o.actual != null && o.actual <= today) return "done";
@@ -1225,7 +1266,7 @@ async function renderInput() {
   } else if (by === "task") {
     h += "<div>Jokainen tehtävä omalla värillään (" + (cnt.sched || 0) + " objektia). Valitse objekti nähdäksesi tehtävän.</div>";
   } else if (by === "source") {
-    h += sw(C.rule, "Tocoman-sääntö (vaihe 1)", cnt.rule) + sw(C.elem, "Elementtiaikataulu (vaihe 2)", cnt.elem) + sw(C.manual, "Käsin annettu", cnt.manual);
+    h += sw(C.rule, "Aikataulun sääntö (vaihe 1)", cnt.rule) + sw(C.elem, "Elementtiaikataulu (vaihe 2)", cnt.elem) + sw(C.manual, "Käsin annettu", cnt.manual);
   } else if (by === "actsrc") {
     h += sw(C.aSS, "Status Sharing: valmis", cnt.aSS) + sw(C.aSSwip, "Status Sharing: työn alla", cnt.aSSwip) +
       sw(C.aMan, "Käsin kirjattu", cnt.aMan) + sw(C.aElem, "Elementtiaikataulu", cnt.aElem) +
@@ -1300,8 +1341,9 @@ function stateOf(o, d, mode) {
   if (d <= pe) return "wip";
   return "done";
 }
+/* Rakentamattomat (hidden = ei vielä alkanut) noudattavat samaa asetusta kuin aikatauluttamattomat. */
 function playStyle(s) {
-  if (s === "hidden") return { visible: false };
+  if (s === "hidden") return unschedStyle();
   if (s === "wip") return { visible: true, color: C.wip };
   if (s === "late") return { visible: true, color: C.late };
   if (s === "nodata") return { visible: true, color: C.nodata };
@@ -1329,10 +1371,9 @@ async function renderPlay(force) {
     addTo(groups, s, playStyle(s), o);
   }
   await applyGroups(groups);
-  let h = '<div><span class="sw" style="background:#fff"></span>Tulossa (piilossa): <b>' + cnt.hidden + "</b></div>" +
-    sw(C.wip, "Työn alla", cnt.wip) + sw(C.done, "Valmis", cnt.done);
+  let h = swCss(unschedCss(), "Tulossa (" + bgText() + ")", cnt.hidden) + sw(C.wip, "Työn alla", cnt.wip) + sw(C.done, "Valmis", cnt.done);
   if (mode === "compare") h += sw(C.late, "Myöhässä (aloitettu, ei valmis)", cnt.late) + sw(C.nodata, "Ei kirjausta (suunniteltu loppu ohi)", cnt.nodata);
-  $("legend").innerHTML = h + noneRow(cnt.none);
+  $("legend").innerHTML = h + swCss(unschedCss(), "Ei aikataulua (" + bgText() + ")", cnt.none);
 }
 async function play() {
   if (minDay == null) return;
@@ -1509,7 +1550,6 @@ function cleanManual(id) { const m = S.manual[id]; if (m && m.start == null && m
 function afterEdit(msg) { save(); recalc(); render(false); showSelection(); log(msg); }
 function isDirty(id) { return $(id).dataset.dirty === "1"; }
 
-/* Kun käsin liitetään osia, joiden nimeä ei ole valittu avainkirjassa, tarjotaan sääntöä kaikille samannimisille. */
 function offerKeyRule(list, taskId) {
   const t = taskById.get(taskId);
   if (!t) return;
@@ -1517,7 +1557,8 @@ function offerKeyRule(list, taskId) {
   if (!kms.length) return;
   const sel = new Set(list.map(o => o.k));
   const others = [...objs.values()].filter(o => kms.indexOf(o.km) >= 0 && !sel.has(o.k)).length;
-  const comp = t.comps.length === 1 ? t.comps[0] : (suggest(keyRows.get(kms[0]) ? keyRows.get(kms[0]).base : kms[0], t.comps, keyRows.get(kms[0]) ? keyRows.get(kms[0]).mat : "") || t.comps[0]);
+  const kr = keyRows.get(kms[0]);
+  const comp = t.comps.length === 1 ? t.comps[0] : (suggest(kr ? kr.base : kms[0], t.comps, kr ? kr.mat : "") || t.comps[0]);
   if (!comp) return;
   if (!confirm("Lisätäänkö avainkirjaan sääntö?\n\n" + kms.join(", ") + " → " + comp +
     (others ? "\n\nSilloin myös muut " + others + " samannimistä osaa saavat aikataulun säännön mukaan (tehtävä valitaan niiden oman lohkon ja kerroksen perusteella)." : ""))) return;
@@ -1591,6 +1632,7 @@ function importRows(rows, fname) {
   if (!rows || !rows.length) return false;
   const tasks = parseTocoman(rows);
   if (tasks && tasks.length) { importTasks(tasks, fname); return true; }
+  if (tasks && !tasks.length) log("Aikataulun otsikkorivi löytyi tiedostosta " + fname + ", mutta yhtään tehtävää (riviä alkupäivämäärällä) ei tunnistettu.");
   for (let hi = 0; hi < Math.min(rows.length, 10); hi++) {
     const hdr = (rows[hi] || []).map(x => String(x == null ? "" : x).trim().toLowerCase());
     const hasVal = ["order", "start", "end", "actual"].some(k => findCol(hdr, ALIAS[k]) >= 0);
@@ -1608,8 +1650,9 @@ function importTasks(tasks, fname) {
   const orphan = Object.values(S.manual).filter(m => m.taskId && m.taskId !== "__none" && !ids.has(m.taskId)).length;
   save(); fillTaskSelect(); recalc(); renderKeyTable(); render(true);
   const lohkot = [...new Set(tasks.map(t => t.lohko).filter(x => x))].join(", ");
-  log("Tocoman-aikataulu " + fname + ": " + tasks.length + " tehtävää (lohkot " + lohkot + ")" + (had ? ", korvasi aiemman" : "") + "." +
-    (orphan ? " " + orphan + " käsin valittua tehtävää ei enää löydy – ne palaavat sääntöön." : ""));
+  const kerrokset = [...new Set(tasks.map(t => t.kerros).filter(x => x))].join(", ");
+  log("Aikataulu " + fname + " (" + lastParseMode + " muoto): " + tasks.length + " tehtävää" + (lohkot ? ", lohkot " + lohkot : "") + (kerrokset ? ", kerrokset " + kerrokset : "") +
+    (had ? ", korvasi aiemman" : "") + "." + (orphan ? " " + orphan + " käsin valittua tehtävää ei enää löydy – ne palaavat sääntöön." : ""));
   if (!modelRead) log("Paina seuraavaksi \"Lue malli\".");
 }
 function importElems(rows, hdr, fname) {
@@ -1761,7 +1804,7 @@ $("file").addEventListener("change", async ev => {
         if (importRows(rows, f.name + " / " + sn)) { ok = true; break; }
       }
     } else ok = importRows(parseCSV(await f.text()), f.name);
-    if (!ok) { log("Tiedostoa " + f.name + " ei tunnistettu (Tocoman: Nimi+Alku, elementtiaikataulu: Tunnus + Järjestys/Asennuspäivä, tai GUID)."); alert("Tiedoston muotoa ei tunnistettu – katso loki."); }
+    if (!ok) { log("Tiedostoa " + f.name + " ei tunnistettu. Aikataulussa pitää olla sarakkeet Nimi ja Alku; elementtiaikataulussa Tunnus + Järjestys/Alku; tai GUID."); alert("Tiedoston muotoa ei tunnistettu – katso loki."); }
   } catch (e) { log("Tuonti epäonnistui: " + errMsg(e)); alert("Tiedoston luku epäonnistui – katso loki."); }
 });
 $("btnRead").onclick = () => readModel();
@@ -1864,7 +1907,7 @@ let selTimer = null, modelTimer = null;
     ssToUI();
     recalc();
     if (S.tasks.length) setTimeout(() => { if (!modelRead) { autoReadTried = true; readModel(); } }, 800);
-    else log("Valmis. Lataa Tocoman-aikataulu (xlsx) ja paina \"Lue malli\".");
+    else log("Valmis. Lataa aikataulu (xlsx) ja paina \"Lue malli\".");
   } catch (e) {
     $("conn").textContent = "Ei yhteyttä";
     log("Yhteys Trimble Connectiin epäonnistui: " + errMsg(e) + " – avaa laajennus Trimble Connectin 3D-katselimessa.");

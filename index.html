@@ -65,7 +65,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 </style>
 </head>
 <body>
-<header><span>Tietoa 4D <small>v2.7</small></span><a href="ohje.html" target="_blank" rel="noopener">Ohje</a><span id="conn" class="pill">Yhdistetään…</span></header>
+<header><span>Tietoa 4D <small>v2.8</small></span><a href="ohje.html" target="_blank" rel="noopener">Ohje</a><span id="conn" class="pill">Yhdistetään…</span></header>
 <div class="topbar">
   <label class="switch"><input type="checkbox" id="colorOn"><span class="sl"></span></label>
   <span>Väritä malli</span><span id="busy" class="muted"></span>
@@ -74,7 +74,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 <section>
   <h2>1. Lähtötiedot</h2>
   <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt,.json">
-  <div class="muted">Tocoman-aikataulu (xlsx/csv) · elementtiaikataulu vaihe 2 (csv/xlsx, vain betonielementit) · työtiedosto (.json)</div>
+  <div class="muted">Aikataulu (Tocoman-vienti tai yksinkertainen taulukko: Nimi + Alku + Loppu, kerros otsikkorivillä tai Kerros-sarakkeessa) · elementtiaikataulu vaihe 2 · työtiedosto (.json)</div>
   <div class="row">
     <button id="btnRead">Lue malli</button>
     <button id="btnClearAll" class="ghost">Tyhjennä työ</button>
@@ -99,7 +99,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
     <div id="keyTable" class="scroll"></div>
   </details>
   <details id="covBox"><summary>Kohdistusraportti</summary>
-    <div class="muted">Malli vs. Tocoman (kpl). Klikkaa riviä valitaksesi objektit mallista.</div>
+    <div class="muted">Malli vs. aikataulu (kpl). Klikkaa riviä valitaksesi objektit mallista.</div>
     <div id="coverage" class="scroll"></div>
   </details>
   <details><summary>Asetukset: mallin kentät</summary>
@@ -117,7 +117,7 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
       <button id="btnTestColor" class="ghost">Testaa väritys valitulle</button>
     </div>
     <h3>Kerrosvastaavuus</h3>
-    <label>Malli = Tocoman <input type="text" id="pKerMap" placeholder="esim. 0=K; 00=K"></label>
+    <label>Malli = aikataulu <input type="text" id="pKerMap" placeholder="esim. 0=K; Level 1=1"></label>
     <div class="muted">Käytä, jos mallin ja aikataulun kerrosmerkinnät eroavat. Erota parit puolipisteellä. Muutos tulee voimaan heti.</div>
   </details>
 </section>
@@ -154,13 +154,14 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
         <option value="compare">Suunniteltu vs. toteutunut</option>
       </select>
     </label>
-    <label>Ilman aikataulua
+    <label>Rakentamattomat osat
       <select id="unschedPlay">
         <option value="hide" selected>Piilota (alkaa tyhjästä)</option>
-        <option value="ghost">Läpinäkyvä</option>
-        <option value="grey">Harmaa</option>
+        <option value="ghost">Läpinäkyvä (koko talo näkyy)</option>
+        <option value="grey">Harmaa (koko talo näkyy)</option>
       </select>
     </label>
+    <div class="muted">Koskee osia, jotka eivät ole vielä alkaneet valittuna päivänä, sekä osia, joilla ei ole aikataulua.</div>
     <div id="dateLabel" class="date">–</div>
     <input type="range" id="slider" min="0" max="0" value="0">
     <div class="row">
@@ -242,6 +243,6 @@ pre{white-space:pre-wrap;font-size:11px;background:#fff;border:1px solid #e3e6ea
 
 <details class="logbox" open><summary>Loki</summary><pre id="log"></pre></details>
 
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>
